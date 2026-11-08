@@ -12,6 +12,7 @@ import com.google.ai.edge.litertlm.EngineConfig
 import com.google.ai.edge.litertlm.ExperimentalApi
 import com.google.ai.edge.litertlm.Message
 import com.google.ai.edge.litertlm.OpenApiTool
+import com.google.ai.edge.litertlm.ThinkingConfig
 import com.google.ai.edge.litertlm.tool
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -45,8 +46,13 @@ class LiteRtChatModel private constructor(
                 val message = if (user.images.isNotEmpty() && supportsImages) {
                     Message.user(Contents.of(listOf<Content>(Content.Text(user.text)) + user.images.map { Content.ImageBytes(it) }))
                 } else Message.user(user.text)
-                conv.sendMessageAsync(message).collect { m ->
+                conv.sendMessageAsync(
+                    message,
+                    extraContext = mapOf("enable_thinking" to false),
+                    thinkingConfig = ThinkingConfig(enableThinking = false),
+                ).collect { m ->
                     val text = m.contents.contents.filterIsInstance<Content.Text>().joinToString("") { it.text }
+                        .ifEmpty { m.channels.filterKeys { it != "thought" }.values.joinToString("") }
                     if (text.isNotEmpty()) send(ChatEvent.Token(text))
                 }
                 finished = true
@@ -77,6 +83,8 @@ class LiteRtChatModel private constructor(
             initialMessages = initial,
             tools = tools.map { tool(wrap(it)) },
             automaticToolCalling = true,
+            extraContext = mapOf("enable_thinking" to false),
+            thinkingConfig = ThinkingConfig(enableThinking = false),
         )
         engine.createConversation(config).also {
             conversation = it; conversationKey = key; knownTurns = history.size

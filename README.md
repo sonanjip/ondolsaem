@@ -14,7 +14,7 @@ The name joins *ondol* (온돌, the floor heating that warms a whole house from 
 
 *One model in memory for every app: load on demand, the model catalog, and the connected apps.*
 
-Status: early development (0.7.0). The first client is [Nunsori / 눈소리](https://github.com/sonanjip/nunsori), an on-device semantic search app.
+Status: early development (0.7.1). The first client is [Nunsori / 눈소리](https://github.com/sonanjip/nunsori), an on-device semantic search app.
 
 ## Features
 
