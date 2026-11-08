@@ -68,7 +68,7 @@ class ModelDownloaderTest {
     }
 
     @Test fun catalogUrlIsWellFormed() {
-        val s = ModelCatalog.byId("eg2-440m")!!.source as ModelSource.HuggingFace
+        val s = ModelCatalog.byId("eg2-740m")!!.source as ModelSource.HuggingFace
         assertTrue(s.url.startsWith("https://huggingface.co/litert-community/") && s.url.endsWith(".litertlm"))
     }
 }

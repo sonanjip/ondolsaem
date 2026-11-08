@@ -11,10 +11,13 @@ import io.github.taehunkim.ondolsaem.download.ModelManager
 import io.github.taehunkim.ondolsaem.engine.ChatModel
 import io.github.taehunkim.ondolsaem.engine.Decider
 import io.github.taehunkim.ondolsaem.engine.NliDecider
+import io.github.taehunkim.ondolsaem.engine.LiteRtDecider
 import io.github.taehunkim.ondolsaem.engine.Embedder
 import io.github.taehunkim.ondolsaem.engine.FaceEngine
 import io.github.taehunkim.ondolsaem.engine.SFaceEngine
 import io.github.taehunkim.ondolsaem.engine.EmbeddingGemma2Embedder
+import io.github.taehunkim.ondolsaem.engine.ImageGenEngine
+import io.github.taehunkim.ondolsaem.engine.IrisEngine
 import io.github.taehunkim.ondolsaem.engine.LiteRtChatModel
 import io.github.taehunkim.ondolsaem.engine.MlKitOcrEngine
 import io.github.taehunkim.ondolsaem.engine.NpuTarget
@@ -53,10 +56,11 @@ class ModelRuntime(
     val asr = LeasedResource<SpeechTools>("asr", scope, measure = measure, policy = policy(Categories.ASR))
     val face = LeasedResource<FaceEngine>("face", scope, measure = measure, policy = policy(Categories.FACE))
     val decision = LeasedResource<Decider>("decision", scope, measure = measure, policy = policy(Categories.DECISION))
+    val imageGen = LeasedResource<ImageGenEngine>("image_gen", scope, { it.backend.ifEmpty { null } }, measure, policy = policy(Categories.IMAGE_GEN))
 
     val resources: Map<String, LeasedResource<*>> = mapOf(
         Categories.EMBEDDING to embedding, Categories.LLM to llm, Categories.OCR to ocrRes, Categories.ASR to asr,
-        Categories.FACE to face, Categories.DECISION to decision,
+        Categories.FACE to face, Categories.DECISION to decision, Categories.IMAGE_GEN to imageGen,
     )
 
     /** One request at a time per category, interactive first, background requests round-robin by app. */
@@ -72,7 +76,7 @@ class ModelRuntime(
         }
     }
     var chatFactory: suspend (spec: ModelSpec, file: File, contextTokens: Int, npu: NpuTarget?) -> ChatModel? = { spec, file, ctx, npu ->
-        LiteRtChatModel.load(file, litertCache, spec.vision, ctx, npu)
+        LiteRtChatModel.load(file, litertCache, spec.vision, ctx, npu, audio = spec.audio)
     }
 
     /** The NPU build to try first for [spec], when NPU use is on and the build and its libraries are on the phone. */
@@ -87,12 +91,36 @@ class ModelRuntime(
     var deciderFactory: suspend (spec: ModelSpec, dir: File, file: File) -> Decider? = { spec, dir, file ->
         when (spec.id) {
             "nli-mdeberta-v3-w8", "nli-mdeberta-v3-q4" -> NliDecider(spec.id, file, File(dir, "tokenizer.json"))
+            "d1-omni-2b" -> LiteRtDecider(spec.id, dir)
             else -> null
         }
     }
+    var imageGenFactory: suspend (spec: ModelSpec, dir: File) -> ImageGenEngine? = { spec, dir -> IrisEngine.load(spec.id, dir) }
     var speechFactory: suspend (asrDir: File?) -> SpeechTools = { SherpaSpeech(context, it, 2) }
 
     suspend fun activeSpec(category: String): ModelSpec? = ModelCatalog.byId(settings.activeModelId(category).first())
+
+    /**
+     * Evicts idle heavy models (LLM, Image Gen, and d1-omni-2b decision) before loading another heavy model
+     * to prevent out-of-memory crashes on mobile devices.
+     */
+    suspend fun evictIdleHeavyModels(exceptCategory: String) {
+        val heavy = listOf(Categories.LLM, Categories.IMAGE_GEN, Categories.DECISION)
+        for (cat in heavy) {
+            if (cat == exceptCategory) continue
+            if (cat == Categories.DECISION) {
+                val decSpec = activeSpec(Categories.DECISION)
+                if (decSpec?.id != "d1-omni-2b") continue
+            }
+            val res = resources[cat]
+            if (res != null && res.isLoaded) {
+                val trimmed = res.trim()
+                if (trimmed) {
+                    System.gc()
+                }
+            }
+        }
+    }
 
     /** Test hook: treat models as downloaded. */
     var readyOverride: ((ModelSpec) -> Boolean)? = null
@@ -130,6 +158,7 @@ class ModelRuntime(
     }
 
     suspend fun chat(owner: String): Lease<ChatModel> {
+        evictIdleHeavyModels(Categories.LLM)
         val spec = requireSpec(Categories.LLM)
         val file = manager.file(spec) ?: File("")
         val ctx = settings.chatContextTokens.first()
@@ -158,9 +187,19 @@ class ModelRuntime(
 
     suspend fun decider(owner: String): Lease<Decider> {
         val spec = requireSpec(Categories.DECISION)
+        if (spec.id == "d1-omni-2b") {
+            evictIdleHeavyModels(Categories.DECISION)
+        }
         val file = manager.modelFile(spec) ?: File("")
         return decision.acquire(spec.id, owner) { deciderFactory(spec, manager.dir(spec), file) }
             ?: throw ModelNotReadyException(Categories.DECISION, "unsupported decision model ${spec.id}")
+    }
+
+    suspend fun imageGen(owner: String): Lease<ImageGenEngine> {
+        evictIdleHeavyModels(Categories.IMAGE_GEN)
+        val spec = requireSpec(Categories.IMAGE_GEN)
+        return imageGen.acquire(spec.id, owner) { imageGenFactory(spec, manager.dir(spec)) }
+            ?: throw ModelNotReadyException(Categories.IMAGE_GEN, "image generation model ${spec.id} did not load")
     }
 
     /** A lease on [category]'s model (loads it now). */
@@ -171,6 +210,7 @@ class ModelRuntime(
         Categories.ASR -> speech(owner)
         Categories.FACE -> faces(owner)
         Categories.DECISION -> decider(owner)
+        Categories.IMAGE_GEN -> imageGen(owner)
         else -> throw ModelNotReadyException(category, "unknown category $category")
     }
 

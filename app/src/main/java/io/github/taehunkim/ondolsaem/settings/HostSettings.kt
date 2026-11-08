@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import io.github.taehunkim.ondolsaem.catalog.ModelCatalog
 import io.github.taehunkim.ondolsaem.catalog.ModelCategories
 import io.github.taehunkim.ondolsaem.runtime.Residency
 import kotlinx.coroutines.flow.Flow
@@ -29,8 +30,13 @@ class HostSettings(private val context: Context) {
     private val onboardingKey = androidx.datastore.preferences.core.booleanPreferencesKey("onboarding_done")
     private fun clientCategoriesKey(pkg: String) = stringSetPreferencesKey("client_categories_$pkg")
 
-    fun activeModelId(category: String): Flow<String> = store.data.map {
-        it[activeKey(category)] ?: ModelCategories.byId(category)?.defaultModelId.orEmpty()
+    fun activeModelId(category: String): Flow<String> = store.data.map { prefs ->
+        val saved = prefs[activeKey(category)]
+        if (saved != null && ModelCatalog.byId(saved)?.category == category) {
+            saved
+        } else {
+            ModelCategories.byId(category)?.defaultModelId.orEmpty()
+        }
     }
 
     suspend fun setActiveModel(category: String, id: String) { store.edit { it[activeKey(category)] = id } }

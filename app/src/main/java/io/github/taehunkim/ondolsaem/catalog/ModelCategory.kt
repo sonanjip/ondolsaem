@@ -59,6 +59,10 @@ object ModelCategories {
             Categories.DECISION, R.string.cat_decision, R.string.cat_decision_desc,
             ChangeImpact.NONE, Residency.IDLE_2M, "nli-mdeberta-v3-w8",
         ),
+        ModelCategory(
+            Categories.IMAGE_GEN, R.string.cat_image_gen, R.string.cat_image_gen_desc,
+            ChangeImpact.NONE, Residency.IMMEDIATE, "iris-3b-turbo",
+        ),
     )
 
     fun byId(id: String): ModelCategory? = all.firstOrNull { it.id == id }

@@ -15,6 +15,7 @@ import io.github.taehunkim.ondolsaem.EmbeddingResult
 import io.github.taehunkim.ondolsaem.FaceResult
 import io.github.taehunkim.ondolsaem.IFaceService
 import io.github.taehunkim.ondolsaem.IDecisionService
+import io.github.taehunkim.ondolsaem.IImageGenService
 import io.github.taehunkim.ondolsaem.IAsrService
 import io.github.taehunkim.ondolsaem.IChatCallback
 import io.github.taehunkim.ondolsaem.IChatService
@@ -193,7 +194,7 @@ class OndolSaemClient(
                 .detectFaces(Pfds.ofBytes(image), priority).toList()
         }
 
-    // ---- decisions (API 3) -------------------------------------------------------------------------------------
+    // ---- decisions (API 3, entailImage in API 4) ---------------------------------------------------------------
 
     /**
      * For each of [hypotheses], the probability (0..1) that it follows from [premise]. Build hypotheses with
@@ -203,6 +204,32 @@ class OndolSaemClient(
         call(minApi = OndolSaem.Api.V3) { h ->
             IDecisionService.Stub.asInterface(h.getCapability(OndolSaem.Categories.DECISION) ?: throw missing(OndolSaem.Categories.DECISION))
                 .entail(premise, hypotheses.toTypedArray(), priority)
+        }
+
+    /**
+     * For each of [hypotheses], the probability (0..1) that it follows from [image] and optional [premise].
+     * Fails with [HostUnavailableException.Reason.HOST_TOO_OLD] on a host below API 4.
+     */
+    suspend fun entailImage(image: File, premise: String = "", hypotheses: List<String>, priority: Int = OndolSaem.PRIORITY_BACKGROUND): FloatArray =
+        call(minApi = OndolSaem.Api.V4) { h ->
+            IDecisionService.Stub.asInterface(h.getCapability(OndolSaem.Categories.DECISION) ?: throw missing(OndolSaem.Categories.DECISION))
+                .entailImage(Pfds.ofFile(image), premise, hypotheses.toTypedArray(), priority)
+        }
+
+    suspend fun entailImage(imageBytes: ByteArray, premise: String = "", hypotheses: List<String>, priority: Int = OndolSaem.PRIORITY_BACKGROUND): FloatArray =
+        call(minApi = OndolSaem.Api.V4) { h ->
+            IDecisionService.Stub.asInterface(h.getCapability(OndolSaem.Categories.DECISION) ?: throw missing(OndolSaem.Categories.DECISION))
+                .entailImage(Pfds.ofBytes(imageBytes), premise, hypotheses.toTypedArray(), priority)
+        }
+
+    // ---- image generation (API 4) ------------------------------------------------------------------------------
+
+    /** Generates an image for [prompt] with [seed], returning PNG bytes. */
+    suspend fun generateImage(prompt: String, seed: Long = 0L, priority: Int = OndolSaem.PRIORITY_INTERACTIVE): ByteArray =
+        call(minApi = OndolSaem.Api.V4) { h ->
+            val svc = IImageGenService.Stub.asInterface(h.getCapability(OndolSaem.Categories.IMAGE_GEN) ?: throw missing(OndolSaem.Categories.IMAGE_GEN))
+            val pfd = svc.generateImage(prompt, seed, priority)
+            Pfds.readAll(pfd)
         }
 
     // ---- speech ------------------------------------------------------------------------------------------------

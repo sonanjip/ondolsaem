@@ -22,8 +22,8 @@ class NpuSelfCheckTest {
     private val manager get() = (ctx.applicationContext as OndolSaemApp).container.modelManager
 
     @Test fun failingBackendsAreReportedNotThrown() = runBlocking {
-        val spec = ModelCatalog.byId("eg2-440m")!!
-        assumeTrue("eg2-440m not downloaded", manager.isReady(spec))
+        val spec = ModelCatalog.byId("eg2-740m")!!
+        assumeTrue("eg2-740m not downloaded", manager.isReady(spec))
         val file = manager.file(spec)!!
         val out = StringBuilder()
         // the main file as a stand-in "NPU build": loading it on the NPU fails here

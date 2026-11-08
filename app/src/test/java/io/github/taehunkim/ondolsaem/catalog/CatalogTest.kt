@@ -43,6 +43,8 @@ class CatalogTest {
             val s = ModelCatalog.byId(id)!!.source as ModelSource.HuggingFace
             assertTrue(id, s.extras.containsKey("tokenizer.json"))
         }
+        val d1 = ModelCatalog.byId("d1-omni-2b")!!.source as ModelSource.HuggingFace
+        assertTrue("d1-omni-2b", d1.extras.containsKey("provider/tokenizer.json"))
     }
 
     @Test fun conversionsHaveTheirTemplateInAssets() {

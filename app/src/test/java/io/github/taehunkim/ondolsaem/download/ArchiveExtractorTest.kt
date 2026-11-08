@@ -82,6 +82,6 @@ class ArchiveExtractorTest {
         assertTrue(s.url.endsWith(".tar.bz2") && s.url.contains("sense-voice"))
         assertEquals(setOf("model.int8.onnx", "tokens.txt"), s.files.keys)
         assertEquals("asr", ModelCatalog.byId("asr-sensevoice")!!.category)
-        assertTrue(ModelCatalog.byId("eg2-740m")!!.audio); assertFalse(ModelCatalog.byId("eg2-440m")!!.audio)
+        assertTrue(ModelCatalog.byId("eg2-740m")!!.audio)
     }
 }

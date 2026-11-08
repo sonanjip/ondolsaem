@@ -22,6 +22,7 @@ import io.github.taehunkim.ondolsaem.ILease
 import io.github.taehunkim.ondolsaem.IOcrService
 import io.github.taehunkim.ondolsaem.IFaceService
 import io.github.taehunkim.ondolsaem.IDecisionService
+import io.github.taehunkim.ondolsaem.IImageGenService
 import io.github.taehunkim.ondolsaem.FaceResult
 import io.github.taehunkim.ondolsaem.IOndolSaem
 import io.github.taehunkim.ondolsaem.IToolExecutor
@@ -118,6 +119,7 @@ class HostService : Service() {
                 Categories.ASR -> asr
                 Categories.FACE -> face
                 Categories.DECISION -> decision
+                Categories.IMAGE_GEN -> imageGen
                 else -> null
             }
         }
@@ -224,6 +226,32 @@ class HostService : Service() {
                 val hs = hypotheses.orEmpty().toList()
                 if (hs.size > MAX_HYPOTHESES) throw BadInputException("at most $MAX_HYPOTHESES hypotheses per call")
                 runtime.decider(pkg).use { it.value.entail(premise.orEmpty().take(MAX_PREMISE_CHARS), hs) }
+            }
+
+        override fun entailImage(image: ParcelFileDescriptor, premise: String?, hypotheses: Array<String>?, priority: Int): FloatArray =
+            serve(Categories.DECISION, priority) { pkg ->
+                val hs = hypotheses.orEmpty().toList()
+                if (hs.size > MAX_HYPOTHESES) throw BadInputException("at most $MAX_HYPOTHESES hypotheses per call")
+                val bytes = Pfds.readAll(image)
+                runtime.decider(pkg).use { it.value.entailImage(bytes, premise.orEmpty().take(MAX_PREMISE_CHARS), hs) }
+            }
+    }
+
+    private val imageGen = object : IImageGenService.Stub() {
+        override fun getActiveModel(): ModelInfo? {
+            val pkg = caller.require()
+            registry.touch(pkg, Categories.IMAGE_GEN)
+            return runBlocking { runtime.modelInfo(Categories.IMAGE_GEN) }
+        }
+
+        override fun generateImage(prompt: String?, seed: Long, priority: Int): ParcelFileDescriptor =
+            serve(Categories.IMAGE_GEN, priority) { pkg ->
+                val p = prompt.orEmpty().trim()
+                if (p.isEmpty()) throw BadInputException("prompt must not be empty")
+                val bytes = runtime.imageGen(pkg).use { l ->
+                    l.value.generateImage(p, seed)
+                }
+                Pfds.ofBytes(bytes)
             }
     }
 

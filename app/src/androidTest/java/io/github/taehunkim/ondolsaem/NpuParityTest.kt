@@ -39,8 +39,6 @@ class NpuParityTest {
         "고양이가 소파 위에서 자고 있다",
     )
 
-    @Test fun embedding440m() = check("eg2-440m")
-
     @Test fun embedding740m() = check("eg2-740m")
 
     private fun check(id: String) = runBlocking {

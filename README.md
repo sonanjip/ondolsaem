@@ -2,7 +2,7 @@
 
 **English** | [한국어](README.ko.md)
 
-OndolSaem is an Android app that hosts on-device AI models for other apps. It downloads curated models per category (text/image/audio embedding, chat LLM, OCR, speech recognition, faces, yes/no decisions), keeps them in memory according to a per-category policy, and serves them to client apps over a bound AIDL service. A model is loaded once for all apps instead of once per app.
+OndolSaem is an Android app that hosts on-device AI models for other apps. It downloads curated models per category (text/image/audio embedding, chat LLM, OCR, speech recognition, faces, yes/no decisions, image generation), keeps them in memory according to a per-category policy, and serves them to client apps over a bound AIDL service. A model is loaded once for all apps instead of once per app.
 
 The name joins *ondol* (온돌, the floor heating that warms a whole house from underneath) and *saem* (샘, a spring everyone draws water from). As acronyms:
 - **ONDOL**: On-device Neural Deployment & Orchestration Layer
@@ -27,7 +27,8 @@ Status: early development (0.6.0). The first client is [Nunsori / 눈소리](htt
 | First run | A short guide: what OndolSaem is, connected apps, recommended models to download (740M embedding with audio by default), notifications |
 | Dashboard | Device memory, the host's memory use, loaded models and which apps hold them |
 | Apps | Apps that use the host, their categories and request statistics; own apps (same signing key or an allowed key) connect directly; other apps ask first and are allowed, denied or revoked here |
-| Decisions | Category *Decisions*: a multilingual (Korean too) natural language inference model answers whether a text matches a topic or condition, with a probability, in about 40 ms. Apps use it to tag notes and to check new files for scheduled tasks. The fp32 original is downloaded and converted on the phone to a 325 MB int8 model (or a ready-made 4-bit build is downloaded) |
+| Decisions | Category *Decisions*: a multilingual (Korean too) natural language inference model answers whether a text or image matches a topic or condition, with a probability. Apps use it to tag notes and to check new files for scheduled tasks. Models include mDeBERTa-v3 (325 MB int8 converted on-device, or 4-bit) for text, and LiquidAI d1-Omni 2B for direct multimodal entailment (evaluates images directly without requiring OCR) |
+| Image generation | Category *Image generation*: on-device text-to-image synthesis using Iris 3B Turbo (768×768 px). Unloads immediately after use to minimize memory footprint. Served over AIDL to client apps (e.g. Malbotdari) |
 | NPU | OndolSaem checks the phone's chip and looks up NPU builds of its models for it on Hugging Face (today: Pixel 10/11, Snapdragon 8 Gen 2 to 8 Elite Gen 5, Dimensity 9400/9500); found ones can be downloaded under the model and it runs on the NPU, falling back to the GPU, then the CPU. Snapdragon phones also get Qualcomm's NPU runtime (about 25 MB). Settings › NPU › "Check the NPU" compares CPU, GPU and NPU on the phone and writes a report to share |
 | Client SDK | `com.github.sonanjip:ondolsaem:<tag>` on JitPack, see [docs/architecture.md](docs/architecture.md) |
 

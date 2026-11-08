@@ -131,12 +131,19 @@ class HostServiceTest {
             // yes when the premise contains the hypothesis' last word
             override fun entail(premise: String, hypotheses: List<String>) =
                 hypotheses.map { if (premise.contains(it.trimEnd('.').substringAfterLast(' '))) 0.9f else 0.1f }.toFloatArray()
+            override fun entailImage(imageBytes: ByteArray, premise: String, hypotheses: List<String>) =
+                hypotheses.map { if (imageBytes.isNotEmpty()) 0.95f else 0.05f }.toFloatArray()
         } }
-        for (c in listOf(Categories.EMBEDDING, Categories.LLM, Categories.OCR, Categories.ASR, Categories.FACE, Categories.DECISION)) {
+        runtime.imageGenFactory = { spec, _ -> object : io.github.taehunkim.ondolsaem.engine.ImageGenEngine {
+            override val modelId = spec.id
+            override suspend fun generateImage(prompt: String, seed: Long): ByteArray =
+                byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)
+        } }
+        for (c in listOf(Categories.EMBEDDING, Categories.LLM, Categories.OCR, Categories.ASR, Categories.FACE, Categories.DECISION, Categories.IMAGE_GEN)) {
             container.settings.setResidency(c, Residency.IDLE_2M)
             runtime.unload(c)
         }
-        container.settings.setActiveModel(Categories.EMBEDDING, "eg2-440m")
+        container.settings.setActiveModel(Categories.EMBEDDING, "eg2-740m")
         client = OndolSaemClient(ctx, idleUnbindMs = 500)
     }
 
@@ -145,15 +152,15 @@ class HostServiceTest {
         container.minClientApi = HostContainer.MIN_CLIENT_API
         runtime.readyOverride = null
         client.disconnect()
-        for (c in listOf(Categories.EMBEDDING, Categories.LLM, Categories.OCR, Categories.ASR, Categories.FACE, Categories.DECISION)) runtime.unload(c)
+        for (c in listOf(Categories.EMBEDDING, Categories.LLM, Categories.OCR, Categories.ASR, Categories.FACE, Categories.DECISION, Categories.IMAGE_GEN)) runtime.unload(c)
     }
 
     @Test fun reportsApiAndCategories() = runBlocking {
         assertEquals(OndolSaem.API_VERSION, client.apiVersion())
         val cats = client.categories().map { it.category }
-        assertEquals(listOf(Categories.EMBEDDING, Categories.LLM, Categories.OCR, Categories.ASR, Categories.FACE, Categories.DECISION), cats)
+        assertEquals(listOf(Categories.EMBEDDING, Categories.LLM, Categories.OCR, Categories.ASR, Categories.FACE, Categories.DECISION, Categories.IMAGE_GEN), cats)
         val emb = client.activeModel(Categories.EMBEDDING)!!
-        assertEquals("eg2-440m", emb.id)
+        assertEquals("eg2-740m", emb.id)
         assertTrue(emb.ready)
         assertNull(client.activeModel("no-such-category"))
     }
@@ -161,7 +168,7 @@ class HostServiceTest {
     @Test fun embedsTextWithModelIdentity() = runBlocking {
         val q = client.embedQuery("hello")
         assertArrayEquals(floatArrayOf(1f, 5f), q.vector, 0f)
-        assertEquals("eg2-440m", q.modelId)
+        assertEquals("eg2-740m", q.modelId)
         assertEquals(1, q.modelVersion)
         val d = client.embedDocument("abc", "t")
         assertArrayEquals(floatArrayOf(2f, 3f), d.vector, 0f)
@@ -244,6 +251,16 @@ class HostServiceTest {
         assertEquals("nli-mdeberta-v3-w8", client.activeModel(Categories.DECISION)!!.id)
     }
 
+    @Test fun decisionsImageAnswersPerHypothesis() = runBlocking {
+        val p = client.entailImage(byteArrayOf(1, 2, 3), "a note about travel", listOf("This text is about travel.", "This text is about cooking."))
+        assertArrayEquals(floatArrayOf(0.95f, 0.95f), p, 1e-6f)
+    }
+
+    @Test fun imageGenerationReturnsPngBytes() = runBlocking {
+        val png = client.generateImage("A cute puppy", 42L)
+        assertArrayEquals(byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A), png)
+    }
+
     @Test fun decisionsNeedAnApi3Host() = runBlocking {
         container.apiVersion = OndolSaem.Api.V2
         client.disconnect(); delay(200)
@@ -290,14 +307,14 @@ class HostServiceTest {
 
     @Test fun modelChangeReachesConnectedClients() = runBlocking {
         client.apiVersion() // connect and register
-        val got = async { withTimeout(5_000) { client.modelChanges.first { it.category == Categories.EMBEDDING } } }
+        val got = async { withTimeout(5_000) { client.modelChanges.first { it.category == Categories.LLM } } }
         delay(100)
-        container.selectModel(Categories.EMBEDDING, "eg2-740m")
+        container.selectModel(Categories.LLM, "qwen35-2b-vl")
         val info = got.await()
-        assertEquals("eg2-740m", info.id)
-        assertTrue(info.audio)
-        assertNotNull(client.activeModel(Categories.EMBEDDING))
-        container.settings.setActiveModel(Categories.EMBEDDING, "eg2-440m")
+        assertEquals("qwen35-2b-vl", info.id)
+        assertTrue(info.vision)
+        assertNotNull(client.activeModel(Categories.LLM))
+        container.settings.setActiveModel(Categories.LLM, "chat-gemma4-e2b")
     }
 
     @Test fun clientRebindsAfterIdleUnbind() = runBlocking {
@@ -355,7 +372,7 @@ class HostServiceTest {
         container.apiVersion = OndolSaem.API_VERSION + 3 // a much newer host
         val old = OndolSaemClient(ctx, idleUnbindMs = 500, clientApi = HostContainer.MIN_CLIENT_API)
         try {
-            assertEquals("eg2-440m", old.embedQuery("hello").modelId)
+            assertEquals("eg2-740m", old.embedQuery("hello").modelId)
         } finally { old.disconnect() }
     }
 }

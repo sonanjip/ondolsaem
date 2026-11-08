@@ -115,7 +115,7 @@ class ModelManager(
     }
 
     fun file(spec: ModelSpec): File? = when (val s = spec.source) {
-        is ModelSource.HuggingFace -> File(modelsDir, "${spec.id}/${s.fileName}")
+        is ModelSource.HuggingFace -> File(modelsDir, "${spec.id}/${s.fileName.substringAfterLast('/')}")
         else -> null
     }
 
@@ -272,19 +272,33 @@ class ModelManager(
             is ModelSource.Archive -> Triple(src.url, File(dir(spec), ARCHIVE_NAME), "")
             else -> return
         }
-        set(spec.id, ModelState.Downloading(0, spec.sizeBytes ?: 0))
+        val totalExpected = spec.sizeBytes ?: 0L
+        set(spec.id, ModelState.Downloading(0, totalExpected))
+        var completedBytes = 0L
         try {
             downloader.download(url, target, token) { d, t ->
-                set(spec.id, ModelState.Downloading(d, t))
-                onProgress(d, t)
+                val tot = if (totalExpected > 0) totalExpected else t
+                val cur = completedBytes + d
+                set(spec.id, ModelState.Downloading(cur, tot))
+                onProgress(cur, tot)
             }
+            completedBytes += target.length()
             val src0 = spec.source
             if (src0 is ModelSource.HuggingFace) {
-                // small companion files (tokenizer, config) after the main file; verified at once
+                // companion files (chunks, tokenizer, config) with cumulative progress tracking
                 for ((path, sha) in src0.extras) {
                     val f = extra(spec, path)
-                    if (f.exists()) continue
-                    downloader.download(src0.url(path), f, token) { _, _ -> }
+                    if (f.exists()) {
+                        completedBytes += f.length()
+                        continue
+                    }
+                    downloader.download(src0.url(path), f, token) { d, _ ->
+                        val cur = completedBytes + d
+                        val tot = if (totalExpected > 0) totalExpected else cur
+                        set(spec.id, ModelState.Downloading(cur, tot))
+                        onProgress(cur, tot)
+                    }
+                    completedBytes += f.length()
                     withContext(Dispatchers.IO) { Checksums.verify(f, sha) }
                 }
             }

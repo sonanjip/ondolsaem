@@ -64,6 +64,8 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.commons.compress)
     implementation(libs.litertlm.android)
+    implementation(libs.litert)
+    implementation(libs.litert.gpu)
     // LiteRT NPU dispatch libraries (Apache-2.0, ~0.5 MB each); Qualcomm's QNN runtime is downloaded on demand (NpuRuntime)
     implementation(libs.litert.npu.google.tensor)
     implementation(libs.litert.npu.qualcomm)

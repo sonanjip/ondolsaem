@@ -21,7 +21,7 @@ interface IOndolSaem {
     ModelInfo[] categories() = 2;
     /** Null for an unknown category. */
     @nullable ModelInfo activeModel(String category) = 3;
-    /** IEmbeddingService, IChatService, IOcrService, IAsrService (API 2) IFaceService or (API 3) IDecisionService; null for an unknown category. */
+    /** IEmbeddingService, IChatService, IOcrService, IAsrService, (API 2) IFaceService, (API 3) IDecisionService or (API 4) IImageGenService; null for an unknown category. */
     @nullable IBinder getCapability(String category) = 4;
     /**
      * API 1. Exchanges versions and registers the callback for model changes. Throws CLIENT_TOO_OLD when the

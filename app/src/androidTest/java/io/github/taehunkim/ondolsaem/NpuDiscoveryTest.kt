@@ -26,7 +26,7 @@ class NpuDiscoveryTest {
 
     @Test fun snapdragon8EliteHasEmbeddingBuilds() {
         val r = check("SM8750")
-        assertEquals(setOf("eg2-440m", "eg2-740m"), r.builds.keys)
+        assertEquals(setOf("eg2-740m"), r.builds.keys)
         assertTrue(r.builds.values.all { it.fileName.endsWith("_Qualcomm_SM8750.litertlm") && it.sha256.length == 64 })
         assertTrue("chat models were checked too", "chat-gemma4-e4b" in r.checked)
     }

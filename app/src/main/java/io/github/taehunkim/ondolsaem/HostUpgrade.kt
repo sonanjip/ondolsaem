@@ -22,7 +22,7 @@ object HostUpgrade {
      */
     fun steps(from: Int, existingInstall: Boolean): Steps {
         val old = from in 1 until 400 || (from == 0 && existingInstall) // versions before 0.4.0 stored no version
-        return Steps(keepOldEmbeddingDefault = old, skipOnboarding = old)
+        return Steps(keepOldEmbeddingDefault = false, skipOnboarding = old)
     }
 
     suspend fun run(settings: HostSettings, filesDir: File, current: Int) {
@@ -32,7 +32,18 @@ object HostUpgrade {
             settings.clients.first().isNotEmpty() || settings.hasStoredChoices()
         val s = steps(from, existing)
         Log.i(TAG, "upgrading from $from to $current (existing install: $existing): $s")
-        if (s.keepOldEmbeddingDefault && !settings.hasActiveModel(Categories.EMBEDDING)) settings.setActiveModel(Categories.EMBEDDING, OLD_EMBEDDING_DEFAULT)
+        if (settings.hasActiveModel(Categories.EMBEDDING)) {
+            val cur = settings.activeModelId(Categories.EMBEDDING).first()
+            if (cur == OLD_EMBEDDING_DEFAULT || cur == "mobileclip2-s0") settings.setActiveModel(Categories.EMBEDDING, "eg2-740m")
+        }
+        if (settings.hasActiveModel(Categories.LLM)) {
+            val cur = settings.activeModelId(Categories.LLM).first()
+            if (cur == "chat-qwen25-1.5b") settings.setActiveModel(Categories.LLM, "chat-gemma4-e2b")
+        }
+        if (settings.hasActiveModel(Categories.DECISION)) {
+            val cur = settings.activeModelId(Categories.DECISION).first()
+            if (cur == "d1-omni-600m") settings.setActiveModel(Categories.DECISION, "nli-mdeberta-v3-w8")
+        }
         if (s.skipOnboarding) settings.setOnboardingDone(true)
         settings.setLastVersionCode(current)
     }

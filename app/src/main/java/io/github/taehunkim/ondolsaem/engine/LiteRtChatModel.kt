@@ -122,6 +122,7 @@ class LiteRtChatModel private constructor(
             modelFile: File, cacheDir: File, vision: Boolean, maxTokens: Int, npu: NpuTarget? = null,
             /** True: the NPU build only, failing instead of falling back (NPU self-check). */
             npuOnly: Boolean = false,
+            audio: Boolean = false,
         ): LiteRtChatModel =
             withContext(Dispatchers.Default) {
                 cacheDir.mkdirs()
@@ -139,7 +140,7 @@ class LiteRtChatModel private constructor(
                             modelPath = a.file.absolutePath,
                             backend = backend,
                             visionBackend = if (vision) a.vision() else null,
-                            audioBackend = null,
+                            audioBackend = if (audio) Backend.CPU() else null,
                             maxNumTokens = maxTokens,
                             maxNumImages = if (vision) 2 else null,
                             cacheDir = cacheDir.absolutePath,

@@ -13,6 +13,7 @@ okhttp = "5.5.1"
 # 0.19.x needs a newer NPU dispatch ABI than litert-npu-runtime 2.3.x has (docs/architecture.md, NPU)
 litertlm = "0.18.1"
 litertNpu = "2.3.2"
+litert = "2.3.2"
 orgJson = "20260814"
 mlkitKorean = "16.0.1"
 mlkitFace = "16.1.7"
@@ -38,6 +39,8 @@ androidx-datastore-preferences = { module = "androidx.datastore:datastore-prefer
 okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
 okhttp-mockwebserver = { module = "com.squareup.okhttp3:mockwebserver", version.ref = "okhttp" }
 litertlm-android = { module = "com.google.ai.edge.litertlm:litertlm-android", version.ref = "litertlm" }
+litert = { module = "com.google.ai.edge.litert:litert", version.ref = "litert" }
+litert-gpu = { module = "com.google.ai.edge.litert:litert-gpu", version.ref = "litert" }
 org-json = { module = "org.json:json", version.ref = "orgJson" }
 litert-npu-google-tensor = { module = "com.google.ai.edge.litert:litert-npu-runtime-google-tensor", version.ref = "litertNpu" }
 litert-npu-qualcomm = { module = "com.google.ai.edge.litert:litert-npu-runtime-qualcomm", version.ref = "litertNpu" }

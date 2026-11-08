@@ -19,7 +19,7 @@ class VectorDumpTest {
         val ctx = InstrumentationRegistry.getInstrumentation().targetContext
         val manager = (ctx.applicationContext as OndolSaemApp).container.modelManager
         val out = StringBuilder()
-        for (id in listOf("eg2-440m", "eg2-740m")) {
+        for (id in listOf("eg2-740m")) {
             val spec = ModelCatalog.byId(id)!!
             if (!manager.isReady(spec)) continue
             EmbeddingGemma2Embedder.load(id, manager.file(spec)!!, File(ctx.cacheDir, "litertlm")).use { e ->

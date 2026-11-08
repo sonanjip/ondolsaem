@@ -14,7 +14,8 @@ One AIDL interface per model category, reached from a small entry point, so a ne
 | `IOcrService` | `recognize(pfd)` |
 | `IAsrService` | `canTranscribe()`, `speechSpans(pfd)` (VAD), `transcribe(pfd, fromMs, ICueCallback)`; input is raw 16 kHz mono 16-bit PCM; the callback returns false to stop |
 | `IFaceService` (API 2) | `detectFaces(pfd)` → `FaceResult[]` (box in 0..1 image coordinates, quality 0..1, L2-normalized 128-d `vector`, `modelId`, `modelVersion`) |
-| `IDecisionService` (API 3) | `entail(premise, hypotheses[], priority)` → `float[]`: per hypothesis the probability (0..1) that it follows from the premise (at most 64 hypotheses, premise cut to 8000 characters and to the model's window) |
+| `IDecisionService` (API 3) | `entail(premise, hypotheses[], priority)` → `float[]`: per hypothesis the probability (0..1) that it follows from the premise (at most 64 hypotheses, premise cut to 8000 characters and to the model's window); API 4: `entailImage(pfd, hypotheses[], priority)` → `float[]` |
+| `IImageGenService` (API 4) | `generateImage(prompt, seed)` → `byte[]` (PNG 768×768) |
 
 - Large inputs (images, WAV, PCM) go as `ParcelFileDescriptor` because of Binder's ~1 MB transaction limit; the host then needs no storage permission.
 - Every request carries a priority: `INTERACTIVE` (chat, search queries) runs before `BACKGROUND` (indexing); background requests of several apps take turns.
@@ -42,7 +43,7 @@ Both give the fp32 answers within 0.01 on the test sentences. Emulator (CPU, 2 t
 
 Host and clients are updated independently, so every connection starts with a version exchange:
 
-- `OndolSaem.API_VERSION` (SDK) is the contract level; named levels live in `OndolSaem.Api` (`V1` = everything in this document except the face category; `V2` adds category `face` and `IFaceService`; `V3` adds category `decision` and `IDecisionService`). A change to the contract (new method, new parcelable field, new category, changed meaning) bumps it, and the new method's doc names its level.
+- `OndolSaem.API_VERSION` (SDK) is the contract level; named levels live in `OndolSaem.Api` (`V1` = everything in this document except the face category; `V2` adds category `face` and `IFaceService`; `V3` adds category `decision` and `IDecisionService`; `V4` adds category `image_gen`, `IImageGenService`, and `IDecisionService.entailImage`). A change to the contract (new method, new parcelable field, new category, changed meaning) bumps it, and the new method's doc names its level.
 - On every (re)connection the client calls `apiVersion()` (never changes) and then `hello(ClientInfo(apiVersion, sdkVersion))`. The host answers `HostInfo(apiVersion, minClientApi, appVersion)`.
 - **Host older than the client needs:** the client refuses to connect when `apiVersion()` is below its `minHostApi`, and every SDK call checks the level it needs (`call(minApi = …)`) before sending anything, so an older host never receives a transaction it does not know. Both end in `HostUnavailableException(HOST_TOO_OLD)`: the client tells the user to update OndolSaem. `supports(level)` lets a client switch features off instead.
 - **Client older than the host serves:** `hello` fails with `CLIENT_TOO_OLD` when the client's level is below `HostContainer.MIN_CLIENT_API` (`HostUnavailableException(CLIENT_TOO_OLD)`): the client tells the user to update itself. Raise the minimum only when an old contract can no longer be honoured; until then a newer host serves every older level (same transaction ids, appended parcelable fields are skipped by old readers).
@@ -56,7 +57,7 @@ A category is a registry entry (string id, title, description, change impact, de
 |---|---|
 | Embedding | `REINDEX_REQUIRED`: strong warning listing the apps that must re-embed |
 | OCR, speech recognition | `DERIVED_DATA`: notice that derived text may change |
-| Chat LLM, decisions | `NONE` (decisions: apps that keep answers, such as Jogakbo's tags, store the model id and ask again after the model-change broadcast) |
+| Chat LLM, decisions, image generation | `NONE` (decisions: apps that keep answers, such as Jogakbo's tags, store the model id and ask again after the model-change broadcast) |
 
 Each category has curated models with descriptions; one model is the category default (stored in DataStore, `HostSettings`; until the user picks one, `ModelCategory.defaultModelId` applies). The embedding default is EmbeddingGemma 2 740M (`eg2-740m`) since 0.4.0 because it also embeds audio; installs from before 0.4.0 that never picked a model keep 440M, pinned by `HostUpgrade` (otherwise every client would re-index). Clients always use the default of a category. A category whose default is not downloaded answers `MODEL_NOT_READY`; speech still offers voice activity detection (Silero VAD is bundled).
 

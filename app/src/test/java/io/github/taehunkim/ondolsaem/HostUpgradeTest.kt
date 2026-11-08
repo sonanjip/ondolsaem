@@ -10,9 +10,9 @@ class HostUpgradeTest {
         assertFalse(s.keepOldEmbeddingDefault); assertFalse(s.skipOnboarding)
     }
 
-    @Test fun anInstallFromBeforeVersionsWereStoredKeepsItsModel() {
+    @Test fun anInstallFromBeforeVersionsWereStoredSkipsOnboarding() {
         val s = HostUpgrade.steps(from = 0, existingInstall = true)
-        assertTrue(s.keepOldEmbeddingDefault); assertTrue(s.skipOnboarding)
+        assertFalse(s.keepOldEmbeddingDefault); assertTrue(s.skipOnboarding)
     }
 
     @Test fun laterUpdatesChangeNothing() {

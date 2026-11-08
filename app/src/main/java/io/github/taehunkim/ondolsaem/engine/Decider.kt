@@ -8,6 +8,11 @@ interface Decider : AutoCloseable {
     val modelId: String
     /** Probability (0..1) per hypothesis that it follows from [premise]. */
     fun entail(premise: String, hypotheses: List<String>): FloatArray
+    /** Probability (0..1) per hypothesis that it follows from [imageBytes] and optional [premise]. */
+    fun entailImage(imageBytes: ByteArray, premise: String = "", hypotheses: List<String>): FloatArray =
+        throw UnsupportedOperationException("Image decision is not supported by $modelId")
+    fun entailImage(image: File, premise: String = "", hypotheses: List<String>): FloatArray =
+        entailImage(image.readBytes(), premise, hypotheses)
     override fun close() {}
 }
 
