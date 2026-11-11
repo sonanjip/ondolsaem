@@ -161,13 +161,15 @@ class HostService : Service() {
             try { token.linkToDeath(this, 0) } catch (e: android.os.RemoteException) { close() }
         }
 
-        override fun release() { caller.require(); close() }
-        override fun binderDied() = close()
+        override fun release() { caller.require(); close(wait = true) }
+        override fun binderDied() = close(wait = false)
 
-        private fun close() {
-            if (!released.compareAndSet(false, true)) return
-            runCatching { token.unlinkToDeath(this, 0) }
-            lease.close()
+        private fun close(wait: Boolean = false) {
+            if (released.compareAndSet(false, true)) {
+                runCatching { token.unlinkToDeath(this, 0) }
+                lease.close()
+            }
+            if (wait) runBlocking { lease.closeAndWait() }
         }
     }
 
@@ -312,8 +314,9 @@ class HostService : Service() {
                     val history = request.historyTexts.orEmpty().indices.map { i ->
                         ChatTurn(if (request.historyRoles[i] == 0) TurnRole.USER else TurnRole.ASSISTANT, request.historyTexts[i])
                     }
-                    runtime.chat(pkg).use { l ->
-                        l.value.reply(
+                    val chatLease = runtime.chat(pkg)
+                    try {
+                        chatLease.value.reply(
                             "$pkg|${request.conversationKey}", request.system.orEmpty(), history,
                             ChatTurn(TurnRole.USER, request.userText.orEmpty(), images), parseTools(request.toolsJson, tools),
                         ).collect { ev ->
@@ -322,6 +325,8 @@ class HostService : Service() {
                                 is ChatEvent.ToolRan -> callback.onToolRan(ev.name, ev.args, ev.result)
                             }
                         }
+                    } finally {
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { chatLease.closeAndWait() }
                     }
                     ok = true
                     runCatching { callback.onDone() }

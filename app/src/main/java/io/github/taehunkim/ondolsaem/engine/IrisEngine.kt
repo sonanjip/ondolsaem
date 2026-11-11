@@ -37,7 +37,7 @@ class IrisEngine(
         val env = Environment.create()
         try {
             val exec = LiteRtExec(env, dir)
-            val pipeline = IrisPipeline(exec, rf.engineConfig(), rf.host, tokens)
+            val pipeline = IrisPipeline(exec, rf.engineConfig(), rf.host, tokens, availableBytes = ::memAvailableBytes)
             val random = Random(if (seed != 0L) seed else System.currentTimeMillis())
             val noise = FloatArray(HostOps.IMAGE_FLOATS) { random.nextGaussian().toFloat() }
             val log = StageLog(clock = System::nanoTime, memory = { emptyMap() })
@@ -64,5 +64,17 @@ class IrisEngine(
 
     companion object {
         fun load(id: String, dir: File): IrisEngine = IrisEngine(id, dir)
+
+        private fun memAvailableBytes(): Long = runCatching {
+            File("/proc/meminfo").useLines { lines ->
+                for (line in lines) {
+                    if (line.startsWith("MemAvailable:")) {
+                        val kb = line.removePrefix("MemAvailable:").trim().substringBefore(' ').toLongOrNull()
+                        if (kb != null) return@useLines kb * 1024L
+                    }
+                }
+                Long.MAX_VALUE
+            }
+        }.getOrDefault(Long.MAX_VALUE)
     }
 }

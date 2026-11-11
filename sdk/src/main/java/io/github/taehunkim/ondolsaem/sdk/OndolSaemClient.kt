@@ -72,9 +72,11 @@ sealed interface ChatStreamEvent {
 }
 
 /** A model kept loaded by [OndolSaemClient.acquire]; [close] lets the host's residency policy take over again. */
-class HostLease internal constructor(private val onClose: () -> Unit) : AutoCloseable {
-    private var closed = false
-    override fun close() { synchronized(this) { if (closed) return; closed = true }; onClose() }
+class HostLease internal constructor(private val startClose: () -> Job) : AutoCloseable {
+    private var releaseJob: Job? = null
+    override fun close() { synchronized(this) { if (releaseJob == null) releaseJob = startClose() } }
+    /** Closes the lease if needed and suspends until the host has acknowledged the release. */
+    suspend fun closeAndWait() { close(); releaseJob?.join() }
 }
 
 /**
@@ -146,8 +148,13 @@ class OndolSaemClient(
             val lease = call { it.acquire(category, token) }
             return HostLease {
                 scope.launch {
-                    runCatching { lease.release() }
-                    end()
+                    try {
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                            runCatching { lease.release() }
+                        }
+                    } finally {
+                        end()
+                    }
                 }
             }
         } catch (e: Throwable) { end(); throw e }

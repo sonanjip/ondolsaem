@@ -6,7 +6,7 @@ plugins {
 // Client SDK version (git tag sdk-vX.Y.Z on release). JitPack serves the only artifact of the repository as
 // com.github.sonanjip:ondolsaem:<tag>; clients substitute that module with this project in a composite build.
 group = "com.github.taehunkim.ondolsaem"
-version = "0.6.0"
+version = "0.6.1"
 
 android {
     namespace = "io.github.taehunkim.ondolsaem.sdk"

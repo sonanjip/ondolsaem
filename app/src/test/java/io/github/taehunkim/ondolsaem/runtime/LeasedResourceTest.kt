@@ -128,4 +128,15 @@ class LeasedResourceTest {
         res.acquire("k") { pss += 500; Res() }!!
         assertEquals(500L, res.state.value!!.loadedKb)
     }
+
+    @Test fun trimWaitsForPendingAsyncCloseAndUnloads() = runTest {
+        val res = LeasedResource<Res>("t", backgroundScope, clock = { testScheduler.currentTime }) { Residency.IDLE_2M }
+        val r = Res()
+        val lease = res.acquire("k") { r }!!
+        lease.close()
+        // No runCurrent() before trim(): trim must still observe the release once close() has been called.
+        assertTrue(res.trim())
+        assertFalse(res.isLoaded)
+        assertTrue(r.closed)
+    }
 }

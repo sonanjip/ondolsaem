@@ -13,8 +13,26 @@ import kotlinx.coroutines.sync.withLock
 
 /** A borrowed resource. Closing it returns the resource; the resource itself is NOT closed. */
 class Lease<T>(val value: T, private val onClose: () -> Unit) : AutoCloseable {
+    private var startClose: (() -> Job)? = null
+    private var job: Job? = null
     private var closed = false
-    override fun close() { synchronized(this) { if (closed) return; closed = true }; onClose() }
+    override fun close() {
+        synchronized(this) {
+            if (closed) return
+            closed = true
+            val starter = startClose
+            if (starter != null) job = starter() else onClose()
+        }
+    }
+    /** Closes the lease if needed and suspends until the owner release has been recorded. */
+    suspend fun closeAndWait() {
+        close()
+        job?.join()
+    }
+    companion object {
+        internal fun <T> withJob(value: T, startClose: () -> Job): Lease<T> =
+            Lease(value) {}.also { it.startClose = startClose }
+    }
 }
 
 /** What a [LeasedResource] holds right now, for the dashboard. */
@@ -48,6 +66,7 @@ class LeasedResource<T : AutoCloseable>(
     private var current: T? = null
     private var currentKey: String? = null
     private val holders = HashMap<String, Int>()
+    private val pendingReleases = ArrayList<Job>()
     private var timer: Job? = null
     private var unloadAt: Long? = null
     private var loadedKb: Long? = null
@@ -71,7 +90,23 @@ class LeasedResource<T : AutoCloseable>(
         }
         holders[owner] = (holders[owner] ?: 0) + 1
         publish()
-        Lease(res) { scope.launch { release(owner) } }
+        Lease.withJob(res) {
+            val j = scope.launch(start = kotlinx.coroutines.CoroutineStart.LAZY) {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { release(owner) }
+            }
+            synchronized(pendingReleases) { pendingReleases += j }
+            j.invokeOnCompletion { synchronized(pendingReleases) { pendingReleases.remove(j) } }
+            j.start()
+            j
+        }
+    }
+
+    private suspend fun awaitPendingReleases() {
+        while (true) {
+            val jobs = synchronized(pendingReleases) { pendingReleases.toList() }
+            if (jobs.isEmpty()) break
+            jobs.forEach { it.join() }
+        }
     }
 
     private suspend fun release(owner: String) = mutex.withLock {
@@ -108,7 +143,10 @@ class LeasedResource<T : AutoCloseable>(
     }
 
     /** Unload now if nobody is using it (memory pressure, or the user asked). */
-    suspend fun trim(): Boolean = mutex.withLock { if (holders.isEmpty() && current != null) { closeLocked(); true } else false }
+    suspend fun trim(): Boolean {
+        awaitPendingReleases()
+        return mutex.withLock { if (holders.isEmpty() && current != null) { closeLocked(); true } else false }
+    }
 
     /** Unload regardless of leases (model deleted/changed). */
     suspend fun closeNow() = mutex.withLock { closeLocked() }
