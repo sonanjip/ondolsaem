@@ -14,9 +14,11 @@ sealed interface ModelSource {
         val extras: Map<String, String?> = emptyMap(),
         /**
          * Converted on the phone after the download (the downloaded main file is then deleted), e.g.
-         * [Conversions.NLI_W8]; the model file the runtime opens is then [ModelManager.modelFile].
+         * [Conversions.NLI_W8] or [Conversions.TFLITE_W8]; the runtime opens [ModelManager.modelFile].
          */
         val convert: String? = null,
+        /** Per-extra conversions (key matching [extras] → one of [Conversions]), deleted after conversion. */
+        val extraConversions: Map<String, String> = emptyMap(),
     ) : ModelSource {
         val url: String get() = url(fileName)
         fun url(path: String): String = "https://huggingface.co/$repo/resolve/main/$path"
@@ -31,6 +33,25 @@ sealed interface ModelSource {
     object Conversions {
         /** fp32 mDeBERTa → weight-only int8 (engine/NliW8Converter, assets/nli-w8). */
         const val NLI_W8 = "nli-w8"
+        /** fp16 FC weights inside `.tflite` → channel-wise int8 (engine/TfliteW8Converter). */
+        const val TFLITE_W8 = "tflite-w8"
+        /** `.npy` bf16 embedding table → row-quantized int8 `.q8` (engine/EmbedTableQ8Converter). */
+        const val EMBED_NPY_Q8 = "embed-npy-q8"
+        /** raw bf16 embedding table → row-quantized int8 `.q8` (engine/EmbedTableQ8Converter). */
+        const val EMBED_RAW_Q8 = "embed-raw-q8"
+
+        val ALL = setOf(NLI_W8, TFLITE_W8, EMBED_NPY_Q8, EMBED_RAW_Q8)
+
+        fun convertedFileName(rawName: String, conversion: String): String = when (conversion) {
+            TFLITE_W8 -> when {
+                rawName.endsWith("_fp16fc.tflite") -> rawName.removeSuffix("_fp16fc.tflite") + "_i8w.tflite"
+                rawName.endsWith("_f16w_dit.tflite") -> rawName.removeSuffix("_f16w_dit.tflite") + "_i8w_dit.tflite"
+                rawName.endsWith("_f16w.tflite") -> rawName.removeSuffix("_f16w.tflite") + "_i8w.tflite"
+                else -> rawName.removeSuffix(".tflite") + "_i8w.tflite"
+            }
+            EMBED_NPY_Q8, EMBED_RAW_Q8 -> rawName.substringBeforeLast('.') + ".q8"
+            else -> rawName
+        }
     }
 
     /** Shipped inside the APK (small). */
@@ -200,6 +221,11 @@ object ModelCatalog {
                     "tables/embed_table.npy" to "0c5cecb5808e459cc5fce45ea85644056294728417e2e2348d447d32e33c27ef",
                     "provider/tokenizer.json" to "41927bd314d17d7d7fadb44e10cd0919f7b71528d7741596d8cbd15c6945ec44",
                 ),
+                convert = ModelSource.Conversions.TFLITE_W8,
+                extraConversions = mapOf(
+                    "d1-omni-2b_tower_G24x24_fp16fc.tflite" to ModelSource.Conversions.TFLITE_W8,
+                    "tables/embed_table.npy" to ModelSource.Conversions.EMBED_NPY_Q8,
+                ),
             ),
             vision = true,
         ),
@@ -237,6 +263,22 @@ object ModelCatalog {
                     "model/iris_te_c09_f16w.tflite" to "8c8acc9b347a13da0c82e2cd6f75da13e01cdff1ef5cfaebbce12286171349a7",
                     "model/iris_te_c10_f16w.tflite" to "45813c0ce1be0e3c2f693f96eb901842d47316610d90a3b18918f250b9e88c58",
                     "model/iris_te_c11_f16w.tflite" to "977236b12c04ce0c10b9ba530db148851756c1c3f263356de103e2216f312277",
+                ),
+                extraConversions = mapOf(
+                    "model/iris_dit_adapter_f16w_dit.tflite" to ModelSource.Conversions.TFLITE_W8,
+                    "model/iris_embed_bf16.f32" to ModelSource.Conversions.EMBED_RAW_Q8,
+                    "model/iris_te_c00_f16w.tflite" to ModelSource.Conversions.TFLITE_W8,
+                    "model/iris_te_c01_f16w.tflite" to ModelSource.Conversions.TFLITE_W8,
+                    "model/iris_te_c02_f16w.tflite" to ModelSource.Conversions.TFLITE_W8,
+                    "model/iris_te_c03_f16w.tflite" to ModelSource.Conversions.TFLITE_W8,
+                    "model/iris_te_c04_f16w.tflite" to ModelSource.Conversions.TFLITE_W8,
+                    "model/iris_te_c05_f16w.tflite" to ModelSource.Conversions.TFLITE_W8,
+                    "model/iris_te_c06_f16w.tflite" to ModelSource.Conversions.TFLITE_W8,
+                    "model/iris_te_c07_f16w.tflite" to ModelSource.Conversions.TFLITE_W8,
+                    "model/iris_te_c08_f16w.tflite" to ModelSource.Conversions.TFLITE_W8,
+                    "model/iris_te_c09_f16w.tflite" to ModelSource.Conversions.TFLITE_W8,
+                    "model/iris_te_c10_f16w.tflite" to ModelSource.Conversions.TFLITE_W8,
+                    "model/iris_te_c11_f16w.tflite" to ModelSource.Conversions.TFLITE_W8,
                 ),
             ),
         ),

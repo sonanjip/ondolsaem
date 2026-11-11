@@ -25,23 +25,28 @@ import kotlin.math.max
  * (text premise and/or direct image input against multiple hypotheses simultaneously).
  *
  * Uses:
- *  - decide_L512_fp16fc.tflite (or INT8 converted): sequence length 512, Set Attention (make_sees)
- *  - tower_G24x24_fp16fc.tflite: 24x24 patch canvas (384x384 px) -> 144 vision tokens (2048 dims)
- *  - embed_table.npy: 128,000 x 2048 BF16 embedding table accessed via read-only mmap
+ *  - decide_L512_i8w.tflite (or _fp16fc.tflite fallback): sequence length 512, Set Attention (make_sees)
+ *  - tower_G24x24_i8w.tflite (or _fp16fc.tflite fallback): 24x24 patch canvas (384x384 px) -> 144 vision tokens (2048 dims)
+ *  - embed_table.q8 (or embed_table.npy fallback): 128,000 x 2048 embedding table accessed via read-only mmap
  *  - tokenizer.json: byte-level BPE tokenizer
  */
 class LiteRtDecider(
     override val modelId: String,
     val dir: File,
 ) : Decider {
-    private val decideFile = File(dir, "d1-omni-2b_decide_L512_fp16fc.tflite")
-    private val towerFile = File(dir, "d1-omni-2b_tower_G24x24_fp16fc.tflite")
-    private val tableFile = listOf(File(dir, "embed_table.npy"), File(dir, "tables/embed_table.npy")).firstOrNull { it.exists() }
-        ?: File(dir, "embed_table.npy")
-    private val tokenizerFile = listOf(File(dir, "tokenizer.json"), File(dir, "provider/tokenizer.json")).firstOrNull { it.exists() }
-        ?: File(dir, "tokenizer.json")
+    private val decideFile = firstExisting(dir, "d1-omni-2b_decide_L512_i8w.tflite", "d1-omni-2b_decide_L512_fp16fc.tflite")
+    private val towerFile = firstExisting(dir, "d1-omni-2b_tower_G24x24_i8w.tflite", "d1-omni-2b_tower_G24x24_fp16fc.tflite")
+    private val tableFile = firstExisting(
+        dir,
+        "embed_table.q8",
+        "tables/embed_table.q8",
+        "embed_table.npy",
+        "tables/embed_table.npy",
+    )
+    private val tokenizerFile = firstExisting(dir, "tokenizer.json", "provider/tokenizer.json")
 
     private val tokenizer: D1BpeTokenizer by lazy { D1BpeTokenizer.load(tokenizerFile) }
+    private var qTable: QuantizedEmbedTable? = null
     private var tableRaf: RandomAccessFile? = null
     private var embedBuffer: ShortBuffer? = null
     private var tableOffset = 128L
@@ -52,6 +57,10 @@ class LiteRtDecider(
 
     private fun initTable() {
         if (!tableFile.exists()) return
+        if (EmbedTableQ8Converter.isQ8File(tableFile)) {
+            qTable = QuantizedEmbedTable.open(tableFile)
+            return
+        }
         val raf = RandomAccessFile(tableFile, "r")
         tableRaf = raf
         val ch = raf.channel
@@ -68,6 +77,10 @@ class LiteRtDecider(
     }
 
     private fun getEmbedRow(tokenId: Int, out: FloatArray, outOffset: Int) {
+        qTable?.let { qt ->
+            qt.readRow(tokenId, out, outOffset)
+            return
+        }
         val buf = embedBuffer ?: return
         val base = tokenId.toLong() * HIDDEN
         for (c in 0 until HIDDEN) {
@@ -245,6 +258,7 @@ class LiteRtDecider(
     }
 
     private fun dotProduct(hidden: FloatArray, hiddenOffset: Int, tokenId: Int): Float {
+        qTable?.let { return it.dotRow(tokenId, hidden, hiddenOffset) }
         val buf = embedBuffer ?: return 0f
         val base = tokenId.toLong() * HIDDEN
         var sum = 0f
@@ -299,6 +313,8 @@ class LiteRtDecider(
     }
 
     override fun close() {
+        runCatching { qTable?.close() }
+        qTable = null
         runCatching { tableRaf?.close() }
         tableRaf = null
         embedBuffer = null
@@ -306,6 +322,9 @@ class LiteRtDecider(
 
     companion object {
         private const val TAG = "LiteRtDecider"
+
+        private fun firstExisting(dir: File, vararg names: String): File =
+            names.asSequence().map { File(dir, it) }.firstOrNull { it.exists() } ?: File(dir, names.last())
         const val HIDDEN = 2048
         const val SEQ_LEN = 512
         const val Q_MAX = 64

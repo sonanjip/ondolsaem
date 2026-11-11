@@ -1,5 +1,7 @@
 package io.github.taehunkim.ondolsaem.engine.iris
 
+import io.github.taehunkim.ondolsaem.engine.EmbedTableQ8Converter
+import io.github.taehunkim.ondolsaem.engine.QuantizedEmbedTable
 import java.io.Closeable
 import java.io.File
 import java.io.RandomAccessFile
@@ -15,12 +17,18 @@ class PromptTokens(assetsDir: File, embedFile: File? = null) : Closeable {
     private val tokenizer = QwenTokenizer(assetsDir)
     private val prefix = readIds(File(assetsDir, "prompt_prefix_ids.txt"))
     private val suffix = readIds(File(assetsDir, "prompt_suffix_ids.txt"))
-    private val actualEmbedFile = embedFile?.takeIf { it.exists() } ?: File(assetsDir, EMBEDDING_FILE)
-    private val embeddingFile = RandomAccessFile(actualEmbedFile, "r")
-    private val embeddings: ShortBuffer = embeddingFile.channel
-        .map(FileChannel.MapMode.READ_ONLY, 0, embeddingFile.length())
-        .order(ByteOrder.LITTLE_ENDIAN)
-        .asShortBuffer()
+    private val actualEmbedFile = embedFile?.takeIf { it.exists() }
+        ?: File(assetsDir, Q8_EMBEDDING_FILE).takeIf { it.exists() }
+        ?: File(assetsDir, EMBEDDING_FILE)
+    private val qTable: QuantizedEmbedTable? =
+        if (EmbedTableQ8Converter.isQ8File(actualEmbedFile)) QuantizedEmbedTable.open(actualEmbedFile) else null
+    private val embeddingFile: RandomAccessFile? = if (qTable == null) RandomAccessFile(actualEmbedFile, "r") else null
+    private val embeddings: ShortBuffer? = embeddingFile?.let { raf ->
+        raf.channel
+            .map(FileChannel.MapMode.READ_ONLY, 0, raf.length())
+            .order(ByteOrder.LITTLE_ENDIAN)
+            .asShortBuffer()
+    }
 
     /** Token ids and attention mask, both [SEQ_LEN], for one caption. */
     fun encode(caption: String): Tokens {
@@ -37,20 +45,28 @@ class PromptTokens(assetsDir: File, embedFile: File? = null) : Closeable {
         return Tokens(ids, realCount, captionIds.size)
     }
 
-    /** inputs_embeds [1, SEQ_LEN, HIDDEN] as fp32, gathered from the bf16 table. */
+    /** inputs_embeds [1, SEQ_LEN, HIDDEN] as fp32, gathered from the .q8 or bf16 table. */
     fun embed(tokens: Tokens): FloatArray {
         val out = FloatArray(SEQ_LEN * HIDDEN)
+        qTable?.let { qt ->
+            for (position in 0 until SEQ_LEN) {
+                qt.readRow(tokens.ids[position], out, position * HIDDEN)
+            }
+            return out
+        }
+        val buf = embeddings!!
         for (position in 0 until SEQ_LEN) {
             val base = tokens.ids[position] * HIDDEN
             for (channel in 0 until HIDDEN) {
-                out[position * HIDDEN + channel] = Float.fromBits(embeddings.get(base + channel).toInt() shl 16)
+                out[position * HIDDEN + channel] = Float.fromBits(buf.get(base + channel).toInt() shl 16)
             }
         }
         return out
     }
 
     override fun close() {
-        embeddingFile.close()
+        qTable?.close()
+        embeddingFile?.close()
     }
 
     /** Padded ids, how many are real (attention mask = 1), and the untruncated caption length. */
@@ -64,6 +80,7 @@ class PromptTokens(assetsDir: File, embedFile: File? = null) : Closeable {
         const val HIDDEN = 2560
         const val PAD_TOKEN_ID = 151643
         const val EMBEDDING_FILE = "embed_bf16.bin"
+        const val Q8_EMBEDDING_FILE = "iris_embed_bf16.q8"
 
         private fun readIds(file: File): IntArray =
             file.readText().trim().split(',').map { it.trim().toInt() }.toIntArray()

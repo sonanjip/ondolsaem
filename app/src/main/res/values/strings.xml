@@ -157,11 +157,11 @@
     <string name="cat_image_gen">Image generation</string>
     <string name="cat_image_gen_desc">Generates 768×768 images from detailed text descriptions. Single-turn high-memory task: unloads immediately after creation.</string>
     <string name="model_d1_desc">LiquidAI decision model that also reads images and audio. Planned; Korean is not among its languages yet.</string>
-    <string name="model_d1_omni_desc">LiquidAI d1-Omni 2B multimodal decision model with official Korean and vision support.</string>
+    <string name="model_d1_omni_desc">LiquidAI d1-Omni 2B multimodal decision model with official Korean and vision support. Downloads 3.9 GB and converts weights on the phone to about 1.95 GB.</string>
     <string name="model_qwen35_desc">Qwen3.5 2B multimodal chat model with vision (reads images).</string>
     <string name="model_lfm3_vl_desc">LiquidAI LFM3 2B multimodal chat model with vision (reads images).</string>
     <string name="model_lfm3_omni_desc">LiquidAI LFM3 Omni 2B multimodal chat model supporting text, images, and audio.</string>
-    <string name="model_iris_desc">Iris 3B Turbo fast 4-step distilled image generation model (768×768 px).</string>
+    <string name="model_iris_desc">Iris 3B Turbo fast 4-step distilled image generation model (768×768 px). Downloads 11.3 GB and converts the text encoder and embedding table on the phone to about 7.2 GB.</string>
     <string name="model_converting">Converting for this phone…</string>
     <string name="model_nli_w8_desc">Multilingual natural language inference (trained on Korean too), text only. Downloads the original model (1.1 GB) and converts it on the phone to about 325 MB. About 40 ms per question.</string>
     <string name="model_nli_q4_desc">The same model, ready-made 4-bit build: no conversion, but about 845 MB on disk and about 800 MB of memory while loaded.</string>

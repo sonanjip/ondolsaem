@@ -1,5 +1,6 @@
 package io.github.taehunkim.ondolsaem.engine.iris
 
+import io.github.taehunkim.ondolsaem.catalog.ModelSource
 import java.io.File
 import java.nio.file.Files
 import java.security.MessageDigest
@@ -69,7 +70,11 @@ class RunFiles(val dir: File, configName: String = "iris3b_config_dit_int8_fp16.
         return (c.textEncoder + c.adapter + c.dual + c.single + c.pixel).map { it.file }
     }
 
-    fun embedFile(): File = File(dir, config.str("embed"))
+    fun embedFile(): File {
+        val raw = config.str("embed")
+        val q8 = ModelSource.Conversions.convertedFileName(raw, ModelSource.Conversions.EMBED_RAW_Q8)
+        return File(dir, q8).takeIf { it.exists() } ?: File(dir, raw)
+    }
 
     /**
      * Writes the tokenizer files into `tok/`.
@@ -95,7 +100,8 @@ class RunFiles(val dir: File, configName: String = "iris3b_config_dit_int8_fp16.
     private fun spec(any: Any?): GraphSpec {
         val m = obj(any)
         val accel = (m["accel"] as? String) ?: "gpu"
-        val file = m.str("file")
+        val rawFile = m.str("file")
+        val file = resolveConvertedTflite(rawFile)
         return GraphSpec(
             role = m.str("role"),
             file = file,
@@ -111,6 +117,14 @@ class RunFiles(val dir: File, configName: String = "iris3b_config_dit_int8_fp16.
             xnnpackCache = m["xnnpack_cache"] as? Boolean ?: false,
             bytes = File(dir, file).length(),
         )
+    }
+
+    private fun resolveConvertedTflite(rawFile: String): String {
+        if (!rawFile.endsWith("_f16w.tflite") && !rawFile.endsWith("_f16w_dit.tflite") && !rawFile.endsWith("_fp16fc.tflite")) {
+            return rawFile
+        }
+        val converted = ModelSource.Conversions.convertedFileName(rawFile, ModelSource.Conversions.TFLITE_W8)
+        return if (File(dir, converted).exists()) converted else rawFile
     }
 
     private fun range(any: Any?): IntArray = (any as List<*>).map { (it as Double).toInt() }.toIntArray()

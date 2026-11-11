@@ -47,10 +47,21 @@ class CatalogTest {
         assertTrue("d1-omni-2b", d1.extras.containsKey("provider/tokenizer.json"))
     }
 
-    @Test fun conversionsHaveTheirTemplateInAssets() {
+    @Test fun conversionsHaveTheirTemplateInAssetsAndValidKeys() {
         for (m in ModelCatalog.all) {
-            val c = (m.source as? ModelSource.HuggingFace)?.convert ?: continue
-            for (f in listOf("model.onnx", "recipe.tsv")) assertTrue("${m.id}: $c/$f", java.io.File("src/main/assets/$c/$f").exists())
+            val s = m.source as? ModelSource.HuggingFace ?: continue
+            s.convert?.let { c ->
+                assertTrue("${m.id}: unknown convert $c", c in ModelSource.Conversions.ALL)
+                if (c == ModelSource.Conversions.NLI_W8) {
+                    for (f in listOf("model.onnx", "recipe.tsv")) {
+                        assertTrue("${m.id}: $c/$f", java.io.File("src/main/assets/$c/$f").exists())
+                    }
+                }
+            }
+            s.extraConversions.forEach { (path, c) ->
+                assertTrue("${m.id}: extraConversion $path not in extras", path in s.extras)
+                assertTrue("${m.id}: unknown extraConversion $c", c in ModelSource.Conversions.ALL)
+            }
         }
     }
 }

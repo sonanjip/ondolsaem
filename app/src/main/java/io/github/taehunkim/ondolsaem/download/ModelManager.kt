@@ -12,10 +12,13 @@ import io.github.taehunkim.ondolsaem.catalog.ModelSource
 import io.github.taehunkim.ondolsaem.catalog.ModelSpec
 import io.github.taehunkim.ondolsaem.catalog.NpuDiscovery
 import io.github.taehunkim.ondolsaem.catalog.NpuFile
+import io.github.taehunkim.ondolsaem.engine.EmbedTableQ8Converter
 import io.github.taehunkim.ondolsaem.engine.NliW8Converter
 import io.github.taehunkim.ondolsaem.engine.Npu
 import io.github.taehunkim.ondolsaem.engine.NpuDevice
 import io.github.taehunkim.ondolsaem.engine.NpuTarget
+import io.github.taehunkim.ondolsaem.engine.TfliteW8Converter
+import io.github.taehunkim.ondolsaem.engine.iris.PromptTokens
 import io.github.taehunkim.ondolsaem.settings.HostSettings
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -119,9 +122,14 @@ class ModelManager(
         else -> null
     }
 
-    /** The file the runtime opens: the converted model when the source is converted, else [file]. */
+    /** The file the runtime opens: the converted model when converted on disk, else [file]. */
     fun modelFile(spec: ModelSpec): File? = when (val s = spec.source) {
-        is ModelSource.HuggingFace -> if (s.convert != null) File(dir(spec), "${s.convert}/model.onnx") else file(spec)
+        is ModelSource.HuggingFace -> {
+            val raw = file(spec) ?: return null
+            val c = s.convert ?: return raw
+            if (c == ModelSource.Conversions.NLI_W8) File(dir(spec), "$c/model.onnx")
+            else convertedFile(spec, raw, c).takeIf { it.exists() } ?: raw
+        }
         else -> null
     }
 
@@ -131,10 +139,30 @@ class ModelManager(
     /** Folder holding the unpacked files of an archive model. */
     fun dir(spec: ModelSpec): File = File(modelsDir, spec.id)
 
+    internal fun convertedFile(spec: ModelSpec, rawFile: File, conversion: String): File =
+        if (conversion == ModelSource.Conversions.NLI_W8) File(dir(spec), "$conversion/model.onnx")
+        else File(rawFile.parentFile, ModelSource.Conversions.convertedFileName(rawFile.name, conversion))
+
+    private fun isConvertedReady(spec: ModelSpec, rawFile: File, conversion: String): Boolean =
+        if (conversion == ModelSource.Conversions.NLI_W8) {
+            File(dir(spec), "$conversion/weights.bin").exists() && convertedFile(spec, rawFile, conversion).exists()
+        } else {
+            convertedFile(spec, rawFile, conversion).exists()
+        }
+
+    private fun isFileOrConvertedReady(spec: ModelSpec, rawFile: File, conversion: String?): Boolean = when {
+        conversion == null -> rawFile.exists()
+        conversion == ModelSource.Conversions.NLI_W8 -> isConvertedReady(spec, rawFile, conversion)
+        else -> isConvertedReady(spec, rawFile, conversion) || rawFile.exists()
+    }
+
     fun isReady(spec: ModelSpec): Boolean = when (val s = spec.source) {
         is ModelSource.Bundled -> true
-        is ModelSource.HuggingFace -> s.extras.keys.all { extra(spec, it).exists() } &&
-            (if (s.convert != null) File(dir(spec), "${s.convert}/weights.bin").exists() && modelFile(spec)!!.exists() else file(spec)?.exists() == true)
+        is ModelSource.HuggingFace -> {
+            val main = file(spec) ?: return false
+            isFileOrConvertedReady(spec, main, s.convert) &&
+                s.extras.keys.all { path -> isFileOrConvertedReady(spec, extra(spec, path), s.extraConversions[path]) }
+        }
         is ModelSource.Archive -> s.files.values.all { File(dir(spec), it).exists() }
         is ModelSource.Planned -> false
     }
@@ -257,7 +285,7 @@ class ModelManager(
             File(f.path + ".part").delete()
         }
         val hf = spec.source as? ModelSource.HuggingFace
-        if (spec.source is ModelSource.Archive || hf?.extras?.isNotEmpty() == true || hf?.convert != null) {
+        if (spec.source is ModelSource.Archive || hf?.extras?.isNotEmpty() == true || hf?.convert != null || hf?.extraConversions?.isNotEmpty() == true) {
             dir(spec).deleteRecursively()
         }
         deleteNpu(id) // useless without the main file (the fallback)
@@ -266,54 +294,34 @@ class ModelManager(
 
     /** Called from [ModelDownloadWorker]. */
     suspend fun runDownload(spec: ModelSpec, onProgress: (Long, Long) -> Unit) {
-        val (url, target, token) = when (val src = spec.source) {
-            is ModelSource.HuggingFace -> Triple(src.url, file(spec) ?: return, settings.hfToken.first())
-            // the token belongs to Hugging Face only
-            is ModelSource.Archive -> Triple(src.url, File(dir(spec), ARCHIVE_NAME), "")
-            else -> return
-        }
         val totalExpected = spec.sizeBytes ?: 0L
         set(spec.id, ModelState.Downloading(0, totalExpected))
         var completedBytes = 0L
         try {
-            downloader.download(url, target, token) { d, t ->
-                val tot = if (totalExpected > 0) totalExpected else t
-                val cur = completedBytes + d
-                set(spec.id, ModelState.Downloading(cur, tot))
-                onProgress(cur, tot)
-            }
-            completedBytes += target.length()
-            val src0 = spec.source
-            if (src0 is ModelSource.HuggingFace) {
-                // companion files (chunks, tokenizer, config) with cumulative progress tracking
-                for ((path, sha) in src0.extras) {
-                    val f = extra(spec, path)
-                    if (f.exists()) {
-                        completedBytes += f.length()
-                        continue
+            when (val src = spec.source) {
+                is ModelSource.HuggingFace -> {
+                    val token = settings.hfToken.first()
+                    val target = file(spec) ?: return
+                    completedBytes += downloadAndConvertFile(
+                        src.url, target, src.sha256, src.convert, spec, token, totalExpected, completedBytes, onProgress,
+                    )
+                    for ((path, sha) in src.extras) {
+                        val f = extra(spec, path)
+                        completedBytes += downloadAndConvertFile(
+                            src.url(path), f, sha, src.extraConversions[path], spec, token, totalExpected, completedBytes, onProgress,
+                        )
                     }
-                    downloader.download(src0.url(path), f, token) { d, _ ->
+                }
+                is ModelSource.Archive -> {
+                    val target = File(dir(spec), ARCHIVE_NAME)
+                    downloader.download(src.url, target, "") { d, t ->
+                        val tot = if (totalExpected > 0) totalExpected else t
                         val cur = completedBytes + d
-                        val tot = if (totalExpected > 0) totalExpected else cur
                         set(spec.id, ModelState.Downloading(cur, tot))
                         onProgress(cur, tot)
                     }
-                    completedBytes += f.length()
-                    withContext(Dispatchers.IO) { Checksums.verify(f, sha) }
-                }
-            }
-            set(spec.id, ModelState.Verifying)
-            withContext(Dispatchers.IO) {
-                when (val src = spec.source) {
-                    is ModelSource.HuggingFace -> {
-                        Checksums.verify(target, src.sha256)
-                        src.convert?.let { conversion ->
-                            convert(conversion, spec, target)
-                            target.delete() // the converted model replaces the download
-                            target.parentFile?.takeIf { it != dir(spec) }?.delete() // its folder, if now empty
-                        }
-                    }
-                    is ModelSource.Archive -> {
+                    set(spec.id, ModelState.Verifying)
+                    withContext(Dispatchers.IO) {
                         ArchiveExtractor.extract(target, dir(spec), src.files)
                         target.delete()
                         // a corrupt archive usually fails to unpack; this also catches a wrong but readable one
@@ -324,8 +332,8 @@ class ModelManager(
                             throw e
                         }
                     }
-                    else -> Unit
                 }
+                else -> return
             }
             set(spec.id, ModelState.Installed)
         } catch (e: CancellationException) {
@@ -340,14 +348,63 @@ class ModelManager(
         }
     }
 
-    /** Converts [source] into `dir/<conversion>/` (template from the APK assets, weights computed here). */
+    private suspend fun downloadAndConvertFile(
+        url: String,
+        rawTarget: File,
+        sha: String?,
+        conversion: String?,
+        spec: ModelSpec,
+        token: String,
+        totalExpected: Long,
+        completedBytes: Long,
+        onProgress: (Long, Long) -> Unit,
+    ): Long {
+        if (conversion != null && isConvertedReady(spec, rawTarget, conversion)) {
+            return convertedFile(spec, rawTarget, conversion).length()
+        }
+        if (!rawTarget.exists()) {
+            downloader.download(url, rawTarget, token) { d, t ->
+                val tot = if (totalExpected > 0) totalExpected else (completedBytes + t)
+                val cur = completedBytes + d
+                set(spec.id, ModelState.Downloading(cur, tot))
+                onProgress(cur, tot)
+            }
+        }
+        val rawLen = rawTarget.length()
+        set(spec.id, ModelState.Verifying)
+        withContext(Dispatchers.IO) {
+            Checksums.verify(rawTarget, sha)
+            if (conversion != null) {
+                convert(conversion, spec, rawTarget)
+                rawTarget.delete() // the converted file replaces the download
+                rawTarget.parentFile?.takeIf { it != dir(spec) }?.delete() // its folder, if now empty
+            }
+        }
+        return rawLen
+    }
+
+    /** Converts [source] on the device according to [conversion]. */
     private fun convert(conversion: String, spec: ModelSpec, source: File) {
-        val out = File(dir(spec), conversion).apply { mkdirs() }
-        val recipe = context.assets.open("$conversion/recipe.tsv").bufferedReader().use { it.readText() }
-        context.assets.open("$conversion/model.onnx").use { i -> File(out, "model.onnx").outputStream().use { i.copyTo(it) } }
         when (conversion) {
-            ModelSource.Conversions.NLI_W8 -> NliW8Converter.convert(source, NliW8Converter.parseRecipe(recipe), File(out, "weights.bin")) { d, t ->
-                set(spec.id, ModelState.Converting(d, t))
+            ModelSource.Conversions.NLI_W8 -> {
+                val out = File(dir(spec), conversion).apply { mkdirs() }
+                val recipe = context.assets.open("$conversion/recipe.tsv").bufferedReader().use { it.readText() }
+                context.assets.open("$conversion/model.onnx").use { i -> File(out, "model.onnx").outputStream().use { i.copyTo(it) } }
+                NliW8Converter.convert(source, NliW8Converter.parseRecipe(recipe), File(out, "weights.bin")) { d, t ->
+                    set(spec.id, ModelState.Converting(d, t))
+                }
+            }
+            ModelSource.Conversions.TFLITE_W8 -> {
+                val dst = convertedFile(spec, source, conversion)
+                TfliteW8Converter.convert(source, dst) { d, t -> set(spec.id, ModelState.Converting(d, t)) }
+            }
+            ModelSource.Conversions.EMBED_NPY_Q8 -> {
+                val dst = convertedFile(spec, source, conversion)
+                EmbedTableQ8Converter.convertNpy(source, dst) { d, t -> set(spec.id, ModelState.Converting(d, t)) }
+            }
+            ModelSource.Conversions.EMBED_RAW_Q8 -> {
+                val dst = convertedFile(spec, source, conversion)
+                EmbedTableQ8Converter.convertRawBf16(source, PromptTokens.HIDDEN, dst) { d, t -> set(spec.id, ModelState.Converting(d, t)) }
             }
             else -> error("unknown conversion $conversion")
         }

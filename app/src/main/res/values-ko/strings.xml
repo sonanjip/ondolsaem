@@ -156,11 +156,11 @@
     <string name="cat_image_gen">이미지 생성</string>
     <string name="cat_image_gen_desc">자세한 글 묘사로부터 768×768 이미지를 만듭니다. 단발성 고부하 작업으로 생성 직후 메모리에서 해제됩니다.</string>
     <string name="model_d1_desc">이미지와 오디오도 읽는 LiquidAI의 판단 모델입니다. 계획 중이며, 아직 지원 언어에 한국어가 없습니다.</string>
-    <string name="model_d1_omni_desc">한국어와 이미지를 지원하는 LiquidAI d1-Omni 2B 멀티모달 판단 모델.</string>
+    <string name="model_d1_omni_desc">한국어와 이미지를 지원하는 LiquidAI d1-Omni 2B 멀티모달 판단 모델. 원본(3.9GB)을 받아 폰에서 약 1.95GB로 바꿉니다.</string>
     <string name="model_qwen35_desc">시각 인식을 지원하는 Qwen3.5 2B 대화 모델(이미지 읽기 가능).</string>
     <string name="model_lfm3_vl_desc">시각 인식을 지원하는 LiquidAI LFM3 2B 대화 모델(이미지 읽기 가능).</string>
     <string name="model_lfm3_omni_desc">텍스트, 이미지, 오디오 입력을 모두 지원하는 LiquidAI LFM3 Omni 2B 대화 모델.</string>
-    <string name="model_iris_desc">Iris 3B Turbo 4단계 고속 플로우 매칭 이미지 생성 모델(768×768 px).</string>
+    <string name="model_iris_desc">Iris 3B Turbo 4단계 고속 플로우 매칭 이미지 생성 모델(768×768 px). 원본(11.3GB)을 받아 폰에서 텍스트 인코더와 임베딩을 약 7.2GB로 바꿉니다.</string>
     <string name="model_converting">이 폰에 맞게 바꾸는 중…</string>
     <string name="model_nli_w8_desc">여러 언어(한국어 포함)로 학습한 자연어 추론 모델로, 글만 읽습니다. 원본(1.1GB)을 받아 폰에서 약 325MB로 바꿉니다. 질문 하나에 약 40ms 걸립니다.</string>
     <string name="model_nli_q4_desc">같은 모델의 4비트 완성본입니다. 변환은 필요 없지만 저장 공간 약 845MB, 불러오면 메모리 약 800MB를 씁니다.</string>

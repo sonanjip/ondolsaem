@@ -39,6 +39,11 @@ The published int8 builds (dynamic quantization: activations to uint8 per tensor
 
 Both give the fp32 answers within 0.01 on the test sentences. Emulator (CPU, 2 threads): about 40 ms per question, 10 questions on one note about 0.5 s.
 
+For multimodal decisions (`d1-omni-2b`) and image generation (`iris-3b-turbo`), the upstream LiteRT distributions ship `FULLY_CONNECTED` weights as FP16 (`Const(FLOAT16) -> DEQUANTIZE -> FULLY_CONNECTED`) and host-side BF16 token embedding tables (`embed_table.npy`, `iris_embed_bf16.f32`). After verifying each downloaded file, OndolSaem converts them on the phone without extra APK assets and deletes the larger originals:
+
+- `engine/EmbedTableQ8Converter` quantizes BF16 embedding tables row-by-row to signed int8 with one fp32 scale per row (`.q8` file, `OSQ8` v1), halving `embed_table.npy` (524 MB → 263 MB) and `iris_embed_bf16.f32` (778 MB → 390 MB). Both `LiteRtDecider` and `iris/PromptTokens` mmap `.q8` when present and fall back to BF16 if an older install kept the raw table.
+- `engine/TfliteW8Converter` parses the `.tflite` FlatBuffer directly (using 64-bit external `Buffer.offset`/`Buffer.size` for >2 GiB models), quantizes every `Const(FLOAT16) -> DEQUANTIZE -> FULLY_CONNECTED` weight tensor channel-wise to int8, wires it directly into `FULLY_CONNECTED` (removing `DEQUANTIZE`, matching `ai-edge-quantizer`'s dynamic int8 format for both LiteRT GPU and XNNPACK CPU), and streams unchanged buffers in 4 MB chunks. This converts `d1-omni-2b` (`decide_L512` + `tower_G24x24`, 3.86 GB → ~1.95 GB total) and `iris-3b-turbo`'s 12 text encoder chunks and text adapter (keeping `iris_dit_pixel_f16w_dit.tflite` in fp16 to preserve final pixel quality, 11.3 GB → ~7.2 GB total).
+
 ## Versioning
 
 Host and clients are updated independently, so every connection starts with a version exchange:
