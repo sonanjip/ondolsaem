@@ -81,6 +81,7 @@ class HostViewModel(app: Application) : AndroidViewModel(app) {
     init {
         // the user opened the app: look up this chip's NPU builds (at most weekly) while NPU use is on
         viewModelScope.launch { if (c.settings.useNpu.first()) c.modelManager.checkNpuBuilds() }
+        viewModelScope.launch { c.modelManager.refreshAiCore() }
     }
     fun npuSize(id: String): Long = ModelCatalog.byId(id)?.let(c.modelManager::npuDownloadBytes) ?: 0
     fun downloadNpu(id: String, wifiOnly: Boolean) = c.modelManager.startNpuDownload(id, wifiOnly)

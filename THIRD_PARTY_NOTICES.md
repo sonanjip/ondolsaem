@@ -16,6 +16,7 @@ It uses the components below. Versions come from [`gradle/libs.versions.toml`](g
 | sherpa-onnx (AAR, downloaded by `scripts/fetch-sherpa-onnx.sh`, not committed) | 2.0.1 | Apache-2.0 |
 | Apache Commons Compress | 1.28.0 | Apache-2.0 |
 | ML Kit Face Detection (bundled model) | 16.1.7 | [ML Kit Terms of Service](https://developers.google.com/ml-kit/terms) (proprietary; fetched through Gradle, not redistributed in this repository) |
+| ML Kit GenAI Prompt API (`genai-prompt`) | 1.0.0-beta5 | [ML Kit Terms of Service](https://developers.google.com/ml-kit/terms) (client SDK talking to Android AICore) |
 | ONNX Runtime C API headers (`app/src/main/cpp/include/onnxruntime`, v1.28.0; the runtime itself comes with sherpa-onnx) | 1.28.0 | MIT |
 | ML Kit Text Recognition (Korean) | 16.0.1 | [ML Kit Terms of Service](https://developers.google.com/ml-kit/terms) (proprietary; fetched through Gradle, not redistributed in this repository) |
 
@@ -37,6 +38,7 @@ redistributing.
 | Qwen3.5 2B VL (chat, images) | 2.9 GB | Hugging Face `litert-community/Qwen3.5-2B` | Apache-2.0 |
 | LFM3 VL 2B (chat, images) | 1.9 GB | Hugging Face `litert-community/LFM3-VL-2B-LiteRT` | LFM Open License 1.0 ("Built with LFM") |
 | LFM3 Omni 2B (chat, images, audio) | 3.0 GB | Hugging Face `litert-community/LFM3-Omni-2B-LiteRT` | LFM Open License 1.0 ("Built with LFM") |
+| Gemini Nano (chat, images via Android AICore) | n/a (system-managed) | Android AICore (`com.google.android.aicore`) | ML Kit Terms |
 | SenseVoice small, int8 (via sherpa-onnx) | 163 MB archive | GitHub `k2-fsa/sherpa-onnx` release `asr-models` | FunASR Model License |
 | Silero VAD | 0.6 MB | GitHub `k2-fsa/sherpa-onnx` release `asr-models` | MIT |
 | ML Kit Korean text recognition | n/a | Google (Gradle dependency) | ML Kit Terms |

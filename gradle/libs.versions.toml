@@ -17,6 +17,7 @@ litert = "2.3.2"
 orgJson = "20260814"
 mlkitKorean = "16.0.1"
 mlkitFace = "16.1.7"
+mlkitGenaiPrompt = "1.0.0-beta5"
 commonsCompress = "1.28.0"
 junit = "4.13.2"
 androidxTestExt = "1.3.0"
@@ -47,6 +48,7 @@ litert-npu-qualcomm = { module = "com.google.ai.edge.litert:litert-npu-runtime-q
 litert-npu-mediatek = { module = "com.google.ai.edge.litert:litert-npu-runtime-mediatek", version.ref = "litertNpu" }
 mlkit-text-recognition-korean = { module = "com.google.mlkit:text-recognition-korean", version.ref = "mlkitKorean" }
 mlkit-face-detection = { module = "com.google.mlkit:face-detection", version.ref = "mlkitFace" }
+mlkit-genai-prompt = { module = "com.google.mlkit:genai-prompt", version.ref = "mlkitGenaiPrompt" }
 commons-compress = { module = "org.apache.commons:commons-compress", version.ref = "commonsCompress" }
 kotlinx-coroutines-play-services = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-play-services", version.ref = "coroutines" }
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }

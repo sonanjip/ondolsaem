@@ -14,6 +14,7 @@ import io.github.taehunkim.ondolsaem.engine.NliDecider
 import io.github.taehunkim.ondolsaem.engine.LiteRtDecider
 import io.github.taehunkim.ondolsaem.engine.Embedder
 import io.github.taehunkim.ondolsaem.engine.FaceEngine
+import io.github.taehunkim.ondolsaem.engine.GeminiNanoChatModel
 import io.github.taehunkim.ondolsaem.engine.SFaceEngine
 import io.github.taehunkim.ondolsaem.engine.EmbeddingGemma2Embedder
 import io.github.taehunkim.ondolsaem.engine.ImageGenEngine
@@ -76,7 +77,10 @@ class ModelRuntime(
         }
     }
     var chatFactory: suspend (spec: ModelSpec, file: File, contextTokens: Int, npu: NpuTarget?) -> ChatModel? = { spec, file, ctx, npu ->
-        LiteRtChatModel.load(file, litertCache, spec.vision, ctx, npu, audio = spec.audio)
+        when (spec.source) {
+            is ModelSource.AiCore -> GeminiNanoChatModel.load(manager.aiCore, ctx)
+            else -> LiteRtChatModel.load(file, litertCache, spec.vision, ctx, npu, audio = spec.audio)
+        }
     }
 
     /** The NPU build to try first for [spec], when NPU use is on and the build and its libraries are on the phone. */
@@ -125,8 +129,15 @@ class ModelRuntime(
     /** Test hook: treat models as downloaded. */
     var readyOverride: ((ModelSpec) -> Boolean)? = null
 
-    private fun usable(spec: ModelSpec?): Boolean =
-        spec != null && spec.source !is ModelSource.Planned && (readyOverride?.invoke(spec) ?: manager.isReady(spec))
+    private suspend fun usable(spec: ModelSpec?): Boolean {
+        if (spec == null || spec.source is ModelSource.Planned) return false
+        readyOverride?.let { return it(spec) }
+        if (spec.source is ModelSource.AiCore) manager.ensureAiCoreStatus()
+        return manager.isReady(spec)
+    }
+
+    private fun effectiveContextTokens(spec: ModelSpec?, configured: Int): Int =
+        Companion.effectiveContextTokens(spec, configured)
 
     /** What [category] serves right now (id empty when nothing is selected). */
     suspend fun modelInfo(category: String): ModelInfo {
@@ -139,7 +150,7 @@ class ModelRuntime(
             ready = usable(spec)
             audio = spec?.audio == true
             vision = spec?.vision == true
-            contextTokens = if (category == Categories.LLM) settings.chatContextTokens.first() else 0
+            contextTokens = if (category == Categories.LLM) effectiveContextTokens(spec, settings.chatContextTokens.first()) else 0
         }
     }
 
@@ -161,8 +172,8 @@ class ModelRuntime(
         evictIdleHeavyModels(Categories.LLM)
         val spec = requireSpec(Categories.LLM)
         val file = manager.file(spec) ?: File("")
-        val ctx = settings.chatContextTokens.first()
-        val npu = npu(spec)
+        val ctx = effectiveContextTokens(spec, settings.chatContextTokens.first())
+        val npu = if (spec.source is ModelSource.AiCore) null else npu(spec)
         return llm.acquire("${spec.id}|$ctx" + if (npu != null) "|npu" else "", owner) { chatFactory(spec, file, ctx, npu) }
             ?: throw ModelNotReadyException(Categories.LLM, "chat model ${spec.id} did not load")
     }
@@ -235,4 +246,10 @@ class ModelRuntime(
             combine(resources.getValue(cat.id).state, settings.residency(cat.id)) { s, r -> s != null && r == Residency.KEEP }
         },
     ) { flags -> flags.any { it } }
+
+    companion object {
+        /** Caps the configured chat context window to Gemini Nano's AICore limit when selected. */
+        internal fun effectiveContextTokens(spec: ModelSpec?, configured: Int): Int =
+            if (spec?.source is ModelSource.AiCore) minOf(configured, GeminiNanoChatModel.MAX_CONTEXT_TOKENS) else configured
+    }
 }

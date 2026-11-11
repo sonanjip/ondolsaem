@@ -57,6 +57,9 @@ sealed interface ModelSource {
     /** Shipped inside the APK (small). */
     data object Bundled : ModelSource
 
+    /** Managed and executed by the Android AICore system service (Gemini Nano via ML Kit GenAI). */
+    data object AiCore : ModelSource
+
     /** Listed in the catalog but not implemented yet. */
     data object Planned : ModelSource
 }
@@ -152,6 +155,14 @@ object ModelCatalog {
             ),
             vision = true,
             audio = true,
+        ),
+        ModelSpec(
+            id = "chat-gemini-nano", category = Categories.LLM,
+            displayName = "Gemini Nano · AICore (chat, images)",
+            descriptionRes = R.string.model_chat_gemini_nano_desc,
+            sizeBytes = null, license = "ML Kit Terms",
+            source = ModelSource.AiCore,
+            vision = true,
         ),
         ModelSpec(
             id = "mlkit-ko", category = Categories.OCR,

@@ -7,12 +7,16 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.workDataOf
+import com.google.mlkit.genai.common.DownloadStatus
+import com.google.mlkit.genai.common.FeatureStatus
 import io.github.taehunkim.ondolsaem.catalog.ModelCatalog
 import io.github.taehunkim.ondolsaem.catalog.ModelSource
 import io.github.taehunkim.ondolsaem.catalog.ModelSpec
 import io.github.taehunkim.ondolsaem.catalog.NpuDiscovery
 import io.github.taehunkim.ondolsaem.catalog.NpuFile
+import io.github.taehunkim.ondolsaem.engine.AiCoreGateway
 import io.github.taehunkim.ondolsaem.engine.EmbedTableQ8Converter
+import io.github.taehunkim.ondolsaem.engine.MlKitAiCoreGateway
 import io.github.taehunkim.ondolsaem.engine.NliW8Converter
 import io.github.taehunkim.ondolsaem.engine.Npu
 import io.github.taehunkim.ondolsaem.engine.NpuDevice
@@ -51,9 +55,12 @@ class ModelManager(
     private val modelsDir: File = File(context.filesDir, "models"),
     /** This phone's NPU chip (null: no NPU builds apply). */
     val npuDevice: NpuDevice? = Npu.device,
+    val aiCore: AiCoreGateway = MlKitAiCoreGateway(),
 ) {
     private val _states = MutableStateFlow<Map<String, ModelState>>(emptyMap())
     val states: StateFlow<Map<String, ModelState>> = _states.asStateFlow()
+
+    @Volatile private var aiCoreStatus: Int? = null
 
     /** State of each model's NPU build on this phone (only models with one for [npuDevice]). */
     private val _npuStates = MutableStateFlow<Map<String, ModelState>>(emptyMap())
@@ -156,8 +163,20 @@ class ModelManager(
         else -> isConvertedReady(spec, rawFile, conversion) || rawFile.exists()
     }
 
+    /** Queries Android AICore for Gemini Nano availability and refreshes catalog states. */
+    suspend fun refreshAiCore(): Int {
+        val status = aiCore.checkStatus()
+        aiCoreStatus = status
+        refresh()
+        return status
+    }
+
+    /** Returns the cached AICore status, querying once if not yet checked. */
+    suspend fun ensureAiCoreStatus(): Int = aiCoreStatus ?: refreshAiCore()
+
     fun isReady(spec: ModelSpec): Boolean = when (val s = spec.source) {
         is ModelSource.Bundled -> true
+        is ModelSource.AiCore -> aiCoreStatus == FeatureStatus.AVAILABLE
         is ModelSource.HuggingFace -> {
             val main = file(spec) ?: return false
             isFileOrConvertedReady(spec, main, s.convert) &&
@@ -187,6 +206,7 @@ class ModelManager(
                     (old[spec.id] is ModelState.Downloading || old[spec.id] is ModelState.WaitingForWifi || old[spec.id] is ModelState.Verifying ||
                         old[spec.id] is ModelState.Converting) &&
                         !isReady(spec) -> old[spec.id]!!
+                    spec.source is ModelSource.AiCore -> aiCoreStateFor(aiCoreStatus, old[spec.id])
                     isReady(spec) -> ModelState.Installed
                     else -> old[spec.id]?.takeIf { it is ModelState.Failed } ?: ModelState.NotInstalled
                 }
@@ -260,7 +280,9 @@ class ModelManager(
     /** [wifiOnly]: wait for an unmetered network (the user declined downloading over a metered one). */
     fun startDownload(id: String, wifiOnly: Boolean = false) {
         val spec = ModelCatalog.byId(id) ?: return
-        if (spec.source !is ModelSource.HuggingFace && spec.source !is ModelSource.Archive || isReady(spec)) return
+        val downloadable = spec.source is ModelSource.HuggingFace || spec.source is ModelSource.Archive || spec.source is ModelSource.AiCore
+        if (!downloadable || isReady(spec)) return
+        if (spec.source is ModelSource.AiCore && aiCoreStatus == FeatureStatus.UNAVAILABLE) return
         set(id, if (wifiOnly) ModelState.WaitingForWifi else ModelState.Downloading(0, spec.sizeBytes ?: 0))
         val network = if (wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED
         val req = OneTimeWorkRequestBuilder<ModelDownloadWorker>()
@@ -279,6 +301,7 @@ class ModelManager(
 
     fun delete(id: String) {
         val spec = ModelCatalog.byId(id) ?: return
+        if (spec.source is ModelSource.AiCore) return
         WorkManager.getInstance(context).cancelUniqueWork(workName(id))
         file(spec)?.let { f ->
             f.delete()
@@ -299,6 +322,13 @@ class ModelManager(
         var completedBytes = 0L
         try {
             when (val src = spec.source) {
+                is ModelSource.AiCore -> {
+                    val finalStatus = runAiCoreDownload(aiCore) { st ->
+                        set(spec.id, st)
+                        if (st is ModelState.Downloading) onProgress(st.downloaded, st.total)
+                    }
+                    aiCoreStatus = finalStatus
+                }
                 is ModelSource.HuggingFace -> {
                     val token = settings.hfToken.first()
                     val target = file(spec) ?: return
@@ -413,8 +443,53 @@ class ModelManager(
     private fun workName(id: String) = "model-download-$id"
     private fun npuWorkName(id: String) = "model-download-npu-$id"
 
-    private companion object {
-        const val ARCHIVE_NAME = "download.tar.bz2"
-        const val RECHECK_MS = 7L * 24 * 3600 * 1000
+    companion object {
+        private const val ARCHIVE_NAME = "download.tar.bz2"
+        private const val RECHECK_MS = 7L * 24 * 3600 * 1000
+
+        internal fun aiCoreStateFor(status: Int?, old: ModelState?): ModelState = when (status) {
+            FeatureStatus.AVAILABLE -> ModelState.Installed
+            FeatureStatus.DOWNLOADABLE -> old?.takeIf { it is ModelState.Failed } ?: ModelState.NotInstalled
+            FeatureStatus.DOWNLOADING -> ModelState.Downloading(0, 0)
+            else -> ModelState.Unavailable
+        }
+
+        internal suspend fun runAiCoreDownload(
+            aiCore: AiCoreGateway,
+            onState: (ModelState) -> Unit,
+        ): Int {
+            val status = aiCore.checkStatus()
+            when (status) {
+                FeatureStatus.AVAILABLE -> return FeatureStatus.AVAILABLE
+                FeatureStatus.UNAVAILABLE ->
+                    throw DownloadException(DownloadException.Kind.NOT_FOUND, "Gemini Nano is unavailable on this device")
+                else -> {
+                    var total = 0L
+                    var completed = false
+                    aiCore.download().collect { ds ->
+                        when (ds) {
+                            is DownloadStatus.DownloadStarted -> {
+                                total = ds.bytesToDownload
+                                onState(ModelState.Downloading(0, total))
+                            }
+                            is DownloadStatus.DownloadProgress -> {
+                                onState(ModelState.Downloading(ds.totalBytesDownloaded, total))
+                            }
+                            is DownloadStatus.DownloadCompleted -> {
+                                completed = true
+                            }
+                            is DownloadStatus.DownloadFailed ->
+                                throw DownloadException(DownloadException.Kind.HTTP, ds.e.message ?: "AICore download failed")
+                        }
+                    }
+                    if (completed) return FeatureStatus.AVAILABLE
+                    val finalStatus = aiCore.checkStatus()
+                    if (finalStatus != FeatureStatus.AVAILABLE) {
+                        throw DownloadException(DownloadException.Kind.HTTP, "AICore download incomplete (status=$finalStatus)")
+                    }
+                    return finalStatus
+                }
+            }
+        }
     }
 }

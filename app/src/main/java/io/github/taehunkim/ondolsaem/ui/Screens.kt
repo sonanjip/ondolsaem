@@ -217,7 +217,8 @@ fun ModelsScreen(vm: HostViewModel) {
 
     meteredFor?.let { spec ->
         MeteredDialog(
-            spec.displayName, spec.sizeBytes?.let(::formatBytes) ?: "?",
+            spec.displayName,
+            spec.sizeBytes?.let(::formatBytes) ?: stringResource(R.string.model_aicore_managed),
             onDownload = { wifiOnly -> vm.download(spec.id, wifiOnly); meteredFor = null },
             onCancel = { meteredFor = null },
         )
@@ -257,13 +258,19 @@ private fun ModelRow(
     onSelect: () -> Unit, onDownload: () -> Unit, onCancel: () -> Unit, onDelete: () -> Unit,
 ) {
     val usable = state is ModelState.Installed
+    val isAiCore = spec.source is ModelSource.AiCore
     Column(Modifier.fillMaxWidth().padding(top = 6.dp).testTag("model_${spec.id}")) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            RadioButton(selected = selected, onClick = onSelect, enabled = spec.source !is ModelSource.Planned)
+            RadioButton(
+                selected = selected,
+                onClick = onSelect,
+                enabled = spec.source !is ModelSource.Planned && !(isAiCore && state is ModelState.Unavailable),
+            )
             Column(Modifier.weight(1f)) {
                 Text(spec.displayName, style = MaterialTheme.typography.bodyLarge)
+                val sizeLabel = spec.sizeBytes?.let(::formatBytes) ?: if (isAiCore) stringResource(R.string.model_aicore_managed) else null
                 Text(
-                    listOfNotNull(spec.sizeBytes?.let(::formatBytes), spec.license).joinToString(" · "),
+                    listOfNotNull(sizeLabel, spec.license).joinToString(" · "),
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
@@ -271,15 +278,23 @@ private fun ModelRow(
         Text(stringResource(spec.descriptionRes), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 48.dp))
         Row(Modifier.padding(start = 48.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             when (state) {
-                ModelState.Unavailable -> Text(stringResource(R.string.model_coming_soon), style = MaterialTheme.typography.labelMedium)
+                ModelState.Unavailable -> Text(
+                    stringResource(if (isAiCore) R.string.model_aicore_unavailable else R.string.model_coming_soon),
+                    style = MaterialTheme.typography.labelMedium,
+                )
                 ModelState.Installed -> {
-                    if (spec.source is ModelSource.Bundled) Text(stringResource(R.string.model_bundled), style = MaterialTheme.typography.labelMedium)
-                    else {
-                        Text(stringResource(R.string.model_installed), style = MaterialTheme.typography.labelMedium)
-                        TextButton(onClick = onDelete) { Text(stringResource(R.string.model_delete)) }
+                    when (spec.source) {
+                        is ModelSource.Bundled -> Text(stringResource(R.string.model_bundled), style = MaterialTheme.typography.labelMedium)
+                        is ModelSource.AiCore -> Text(stringResource(R.string.model_aicore_ready), style = MaterialTheme.typography.labelMedium)
+                        else -> {
+                            Text(stringResource(R.string.model_installed), style = MaterialTheme.typography.labelMedium)
+                            TextButton(onClick = onDelete) { Text(stringResource(R.string.model_delete)) }
+                        }
                     }
                 }
-                ModelState.NotInstalled -> OutlinedButton(onClick = onDownload) { Text(stringResource(R.string.model_download)) }
+                ModelState.NotInstalled -> OutlinedButton(onClick = onDownload) {
+                    Text(stringResource(if (isAiCore) R.string.model_aicore_download else R.string.model_download))
+                }
                 ModelState.Verifying -> {
                     LinearProgressIndicator(Modifier.weight(1f))
                     Text(stringResource(R.string.model_verifying), style = MaterialTheme.typography.labelMedium)
@@ -295,8 +310,13 @@ private fun ModelRow(
                 is ModelState.Downloading -> {
                     val pct = if (state.total > 0) (state.downloaded * 100 / state.total).toInt() else 0
                     Column(Modifier.weight(1f)) {
-                        LinearProgressIndicator(progress = { pct / 100f }, modifier = Modifier.fillMaxWidth())
-                        Text(stringResource(R.string.model_downloading, pct), style = MaterialTheme.typography.labelMedium)
+                        if (state.total > 0) {
+                            LinearProgressIndicator(progress = { pct / 100f }, modifier = Modifier.fillMaxWidth())
+                            Text(stringResource(R.string.model_downloading, pct), style = MaterialTheme.typography.labelMedium)
+                        } else {
+                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                            Text(stringResource(R.string.model_downloading, 0), style = MaterialTheme.typography.labelMedium)
+                        }
                     }
                     TextButton(onClick = onCancel) { Text(stringResource(R.string.action_cancel)) }
                 }

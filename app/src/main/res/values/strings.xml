@@ -79,6 +79,11 @@
     <string name="model_chat_gemma4_e2b_desc">Google\'s multimodal chat model (text and images), about 2 B effective parameters. Recommended default.</string>
     <string name="model_chat_gemma4_e4b_desc">Larger and more capable than E2B (text and images). Needs more memory.</string>
     <string name="model_chat_qwen_desc">Smaller text-only chat model; faster on weak phones, weaker at using tools.</string>
+    <string name="model_chat_gemini_nano_desc">Google\'s system-managed on-device model via Android AICore (text and images, ~1.1–1.5 GB system RAM, up to 4K tokens). Available on supported Pixel and flagship devices.</string>
+    <string name="model_aicore_ready">Ready via AICore</string>
+    <string name="model_aicore_unavailable">Not supported on this device (requires Android AICore)</string>
+    <string name="model_aicore_download">Get via AICore</string>
+    <string name="model_aicore_managed">System-managed (AICore)</string>
     <string name="model_mlkit_desc">Google ML Kit text recognition for Korean and Latin scripts. Runs offline.</string>
     <string name="model_ppocr_desc">PaddleOCR mobile model for Korean text.</string>
     <string name="cat_face">Faces</string>

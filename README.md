@@ -21,6 +21,7 @@ Status: early development (0.7.1). The first client is [Nunsori / 눈소리](htt
 | Feature | Description |
 |---|---|
 | Model categories | Each category has a short description and curated models; one downloaded model is the category default |
+| Chat LLM | Supports LiteRT-LM models (Gemma 4 E2B/E4B, Qwen3.5 2B VL, LFM3 VL/Omni 2B) and **Gemini Nano via Android AICore** on supported devices (text & images, ~1.1–1.5 GB system RAM, minimal host memory overhead) |
 | Downloads | Warning before downloading on a metered network (mobile data or metered Wi-Fi), with a "wait for Wi-Fi" option |
 | Model changes | Changing an embedding model warns which apps must re-embed their data; client apps are notified right away or on their next connection |
 | Residency | Per category: keep loaded, unload right after use, or unload after N minutes. Unloaded models are loaded again on the next request. If Android refuses to keep the host running in the background, a notification and a dashboard card offer to turn off battery optimization |

@@ -79,6 +79,11 @@
     <string name="model_chat_gemma4_e2b_desc">구글의 멀티모달 채팅 모델(텍스트·이미지), 유효 파라미터 약 20억. 추천 기본값.</string>
     <string name="model_chat_gemma4_e4b_desc">E2B보다 크고 성능이 좋습니다(텍스트·이미지). 메모리를 더 씁니다.</string>
     <string name="model_chat_qwen_desc">더 작은 텍스트 전용 채팅 모델. 약한 폰에서 빠르지만 도구 사용 능력은 낮습니다.</string>
+    <string name="model_chat_gemini_nano_desc">Android AICore가 시스템 차원에서 관리하는 구글 온디바이스 모델(텍스트·이미지, 시스템 RAM 약 1.1~1.5GB, 최대 4K 토큰). 지원하는 Pixel 및 플래그십 기기에서 사용할 수 있습니다.</string>
+    <string name="model_aicore_ready">AICore 준비됨</string>
+    <string name="model_aicore_unavailable">이 기기에서 지원하지 않음 (Android AICore 필요)</string>
+    <string name="model_aicore_download">AICore에서 받기</string>
+    <string name="model_aicore_managed">시스템 관리 (AICore)</string>
     <string name="model_mlkit_desc">한국어와 라틴 문자를 인식하는 Google ML Kit 텍스트 인식. 오프라인으로 동작합니다.</string>
     <string name="model_ppocr_desc">한국어용 PaddleOCR 모바일 모델입니다.</string>
     <string name="cat_face">얼굴</string>

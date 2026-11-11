@@ -47,6 +47,13 @@ class CatalogTest {
         assertTrue("d1-omni-2b", d1.extras.containsKey("provider/tokenizer.json"))
     }
 
+    @Test fun geminiNanoUsesAiCoreInLlmCategory() {
+        val nano = ModelCatalog.byId("chat-gemini-nano")!!
+        assertEquals("llm", nano.category)
+        assertTrue(nano.vision)
+        assertTrue(nano.source is ModelSource.AiCore)
+    }
+
     @Test fun conversionsHaveTheirTemplateInAssetsAndValidKeys() {
         for (m in ModelCatalog.all) {
             val s = m.source as? ModelSource.HuggingFace ?: continue

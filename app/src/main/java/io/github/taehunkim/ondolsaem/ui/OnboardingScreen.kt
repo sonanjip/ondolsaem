@@ -140,7 +140,8 @@ private fun Models(vm: HostViewModel) {
         }
     }
     val toGet = defaults.filter { (cat, spec) ->
-        cat.id in chosen && spec.source !is ModelSource.Bundled && states[spec.id] !is ModelState.Installed &&
+        cat.id in chosen && spec.source !is ModelSource.Bundled && spec.source !is ModelSource.AiCore &&
+            states[spec.id] !is ModelState.Installed &&
             states[spec.id] !is ModelState.Downloading && states[spec.id] !is ModelState.WaitingForWifi && states[spec.id] !is ModelState.Verifying &&
                 states[spec.id] !is ModelState.Converting
     }.map { it.second }

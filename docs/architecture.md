@@ -44,6 +44,13 @@ For multimodal decisions (`d1-omni-2b`) and image generation (`iris-3b-turbo`), 
 - `engine/EmbedTableQ8Converter` quantizes BF16 embedding tables row-by-row to signed int8 with one fp32 scale per row (`.q8` file, `OSQ8` v1), halving `embed_table.npy` (524 MB → 263 MB) and `iris_embed_bf16.f32` (778 MB → 390 MB). Both `LiteRtDecider` and `iris/PromptTokens` mmap `.q8` when present and fall back to BF16 if an older install kept the raw table.
 - `engine/TfliteW8Converter` parses the `.tflite` FlatBuffer directly (using 64-bit external `Buffer.offset`/`Buffer.size` for >2 GiB models), quantizes every `Const(FLOAT16) -> DEQUANTIZE -> FULLY_CONNECTED` weight tensor channel-wise to int8, wires it directly into `FULLY_CONNECTED` (removing `DEQUANTIZE`, matching `ai-edge-quantizer`'s dynamic int8 format for both LiteRT GPU and XNNPACK CPU), and streams unchanged buffers in 4 MB chunks. This converts `d1-omni-2b` (`decide_L512` + `tower_G24x24`, 3.86 GB → ~1.95 GB total) and `iris-3b-turbo`'s 12 text encoder chunks and text adapter (keeping `iris_dit_pixel_f16w_dit.tflite` in fp16 to preserve final pixel quality, 11.3 GB → ~7.2 GB total).
 
+## Chat LLM (LiteRT-LM & Gemini Nano via AICore)
+
+The default chat models (`chat-gemma4-e2b`, `chat-gemma4-e4b`, `qwen35-2b-vl`, `lfm3-vl-2b`, `lfm3-omni-2b`) run in-process on `LiteRtChatModel`. On devices with Android AICore, `chat-gemini-nano` (`ModelSource.AiCore`) is also offered via `com.google.mlkit:genai-prompt` (`engine/GeminiNanoChatModel`, `engine/AiCoreGateway`):
+
+- **System-managed lifecycle & memory.** AICore downloads, updates, and holds the quantized Gemini Nano weights and KV cache inside the `com.google.android.aicore` system process (~1.1–1.5 GB system RAM), so OndolSaem adds negligible app storage and host PSS overhead (~10–30 MB IPC footprint).
+- **Capability & context adaptation.** `ModelRuntime.modelInfo` and `ModelRuntime.chat` cap the chat context window at 4,096 tokens when `chat-gemini-nano` is active. `GeminiNanoChatModel` queries `Feature.SYSTEM_PROMPT` and `Feature.FUNCTION_CALLING` at session start, using native `FunctionDeclaration` / `FunctionResponsePart` when supported and falling back cleanly to prompt-guided `<tool_call>` parsing (with `StreamTextBuffer` withholding raw tool tags) when an older AICore build rejects native tools.
+
 ## Versioning
 
 Host and clients are updated independently, so every connection starts with a version exchange:

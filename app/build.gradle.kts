@@ -72,6 +72,7 @@ dependencies {
     implementation(libs.litert.npu.mediatek)
     implementation(libs.mlkit.text.recognition.korean)
     implementation(libs.mlkit.face.detection)
+    implementation(libs.mlkit.genai.prompt)
     // Not on Maven Central: scripts/fetch-sherpa-onnx.sh downloads it into app/libs (git-ignored).
     implementation(files("libs/sherpa-onnx-2.0.1.aar"))
     implementation(libs.kotlinx.coroutines.android)
