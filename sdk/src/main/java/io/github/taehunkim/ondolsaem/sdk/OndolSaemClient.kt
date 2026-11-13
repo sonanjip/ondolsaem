@@ -254,6 +254,20 @@ class OndolSaemClient(
     suspend fun transcribe(
         pcm: File, fromMs: Long, priority: Int = OndolSaem.PRIORITY_BACKGROUND,
         onCue: suspend (startMs: Long, endMs: Long, text: String) -> Unit,
+    ) = transcribeRequest(pcm, fromMs, priority, null, onCue)
+
+    /** API 5. Explicit recognition language; unsupported languages are rejected, old hosts report HOST_TOO_OLD. */
+    suspend fun transcribeWithLanguage(
+        pcm: File, fromMs: Long, language: String, priority: Int = OndolSaem.PRIORITY_BACKGROUND,
+        onCue: suspend (startMs: Long, endMs: Long, text: String) -> Unit,
+    ) {
+        SpeechLanguages.requireSupported(language)
+        transcribeRequest(pcm, fromMs, priority, language, onCue)
+    }
+
+    private suspend fun transcribeRequest(
+        pcm: File, fromMs: Long, priority: Int, language: String?,
+        onCue: suspend (Long, Long, String) -> Unit,
     ) {
         val job = currentCoroutineContext()[Job]
         val cb = object : ICueCallback.Stub() {
@@ -265,7 +279,12 @@ class OndolSaemClient(
                 }
             }
         }
-        call { asr(it).transcribe(Pfds.ofFile(pcm), fromMs, cb, priority) }
+        call(minApi = if (language == null) OndolSaem.Api.V1 else OndolSaem.Api.V5) { host ->
+            Pfds.ofFile(pcm).use { pfd ->
+                if (language == null) asr(host).transcribe(pfd, fromMs, cb, priority)
+                else asr(host).transcribeWithLanguage(pfd, fromMs, cb, priority, language)
+            }
+        }
         currentCoroutineContext().ensureActiveCompat()
     }
 

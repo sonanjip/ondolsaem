@@ -12,7 +12,7 @@ One AIDL interface per model category, reached from a small entry point, so a ne
 | `IEmbeddingService` | `embedQuery`, `embedDocument`, `embedImage(pfd)`, `embedImages(pfd[])`, `embedAudio(pfd)`; every result carries `modelId` + `modelVersion` |
 | `IChatService` | `reply(request, IChatCallback, IToolExecutor, priority)` returns at once and streams tokens; tool calls are executed in the client through `IToolExecutor.execute(name, argsJson)`; `cancel(requestId)`, `reset()`. The conversation key is prefixed with the client package. |
 | `IOcrService` | `recognize(pfd)` |
-| `IAsrService` | `canTranscribe()`, `speechSpans(pfd)` (VAD), `transcribe(pfd, fromMs, ICueCallback)`; input is raw 16 kHz mono 16-bit PCM; the callback returns false to stop |
+| `IAsrService` | `canTranscribe()`, `speechSpans(pfd)` (VAD), `transcribe(pfd, fromMs, ICueCallback)`; API 5 adds request-scoped `transcribeWithLanguage`; input is raw 16 kHz mono 16-bit PCM; the callback returns false to stop |
 | `IFaceService` (API 2) | `detectFaces(pfd)` → `FaceResult[]` (box in 0..1 image coordinates, quality 0..1, L2-normalized 128-d `vector`, `modelId`, `modelVersion`) |
 | `IDecisionService` (API 3) | `entail(premise, hypotheses[], priority)` → `float[]`: per hypothesis the probability (0..1) that it follows from the premise (at most 64 hypotheses, premise cut to 8000 characters and to the model's window); API 4: `entailImage(pfd, hypotheses[], priority)` → `float[]` |
 | `IImageGenService` (API 4) | `generateImage(prompt, seed)` → `byte[]` (PNG 768×768) |
@@ -120,3 +120,9 @@ A custom `signature` permission was dropped on purpose: Android grants a permiss
 ## Dashboard
 
 Memory first, refreshed every 2 seconds: device memory (`ActivityManager.MemoryInfo`), the host's process memory (`Debug.MemoryInfo`: total PSS, native, graphics, Java), and per category the loaded model with backend (GPU/CPU), its memory (PSS growth measured while loading), the apps holding it, the time left before it unloads, the policy, and "load now" / "unload now". The Apps tab lists the client apps (stored in DataStore) with the categories they use and per-category request counts and average latency since the host started (`ClientRegistry`).
+
+### API V5: recognition-language hints
+
+SDK 0.7.0 / host 0.9.0 append `IAsrService.transcribeWithLanguage` at transaction 4. It accepts `auto/ko/en/ja/zh/yue`; legacy transaction 3 delegates to auto. Caller approval, ASR priority gating, PCM descriptor transport and cancellation remain the same. Invalid raw language codes/negative offsets are BAD_INPUT. The host API floor is unchanged.
+
+SenseVoice takes language in recognizer configuration. `SherpaSpeech` retains one recognizer and replaces it when the requested language changes, releasing the old recognizer before loading another. ASR requests are serialized by PriorityGate and direct engine recognition by a mutex. The language never becomes a host-wide preference: every legacy call explicitly restores auto. Consecutive requests for the same language reuse the resident recognizer. No model download is required.

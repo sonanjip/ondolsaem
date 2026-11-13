@@ -10,6 +10,9 @@ import com.k2fsa.sherpa.onnx.Vad
 import com.k2fsa.sherpa.onnx.VadModelConfig
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import io.github.taehunkim.ondolsaem.sdk.SpeechLanguages
 import java.io.File
 import java.io.RandomAccessFile
 
@@ -23,6 +26,12 @@ interface SpeechTools : AutoCloseable {
     /** Streams recognised utterances from [fromMs] on. Needs an ASR model ([canTranscribe]). */
     suspend fun transcribe(pcm: File, fromMs: Long, onCue: suspend (Cue) -> Unit)
 
+    /** Override when an engine supports explicit language hints. Legacy/fake engines may still support auto only. */
+    suspend fun transcribeWithLanguage(pcm: File, fromMs: Long, language: String, onCue: suspend (Cue) -> Unit) {
+        require(language == "auto") { "This speech engine does not support explicit languages" }
+        transcribe(pcm, fromMs, onCue)
+    }
+
     override fun close() {}
 }
 
@@ -30,13 +39,17 @@ interface SpeechTools : AutoCloseable {
  * sherpa-onnx: Silero VAD (bundled, 0.6 MB) finds utterances, SenseVoice (downloaded) recognises them.
  * [asrDir] is null when no recognition model is installed; VAD still works then.
  */
-class SherpaSpeech(private val context: Context, asrDir: File?, threads: Int = 2) : SpeechTools {
-    private val recognizer: OfflineRecognizer? = asrDir?.let {
+class SherpaSpeech(private val context: Context, private val asrDir: File?, private val threads: Int = 2) : SpeechTools {
+    private val recognitionMutex = Mutex()
+    private var activeLanguage = "auto"
+    private var recognizer: OfflineRecognizer? = createRecognizer("auto")
+
+    private fun createRecognizer(language: String): OfflineRecognizer? = asrDir?.let {
         OfflineRecognizer(
             null,
             OfflineRecognizerConfig(
                 modelConfig = OfflineModelConfig(
-                    senseVoice = OfflineSenseVoiceModelConfig(model = File(it, "model.int8.onnx").path, language = "auto", useInverseTextNormalization = true),
+                    senseVoice = OfflineSenseVoiceModelConfig(model = File(it, "model.int8.onnx").path, language = language, useInverseTextNormalization = true),
                     tokens = File(it, "tokens.txt").path,
                     numThreads = threads,
                 ),
@@ -44,7 +57,7 @@ class SherpaSpeech(private val context: Context, asrDir: File?, threads: Int = 2
         )
     }
 
-    override val canTranscribe: Boolean get() = recognizer != null
+    override val canTranscribe: Boolean get() = asrDir != null
 
     private fun newVad() = Vad(
         context.assets,
@@ -63,8 +76,19 @@ class SherpaSpeech(private val context: Context, asrDir: File?, threads: Int = 2
         return out
     }
 
-    override suspend fun transcribe(pcm: File, fromMs: Long, onCue: suspend (Cue) -> Unit) {
-        val r = recognizer ?: return
+    override suspend fun transcribe(pcm: File, fromMs: Long, onCue: suspend (Cue) -> Unit) =
+        transcribeWithLanguage(pcm, fromMs, "auto", onCue)
+
+    override suspend fun transcribeWithLanguage(pcm: File, fromMs: Long, language: String, onCue: suspend (Cue) -> Unit) = recognitionMutex.withLock {
+        SpeechLanguages.requireSupported(language)
+        if (language != activeLanguage || recognizer == null) {
+            // Keep only one model resident. The ASR service gate serializes requests; this mutex also protects direct calls.
+            recognizer?.release()
+            recognizer = null
+            recognizer = createRecognizer(language)
+            activeLanguage = language
+        }
+        val r = recognizer ?: return@withLock
         runVad(pcm, fromMs) { startMs, samples ->
             val stream = r.createStream()
             try {

@@ -281,12 +281,20 @@ class HostService : Service() {
         }
 
         override fun transcribe(pcm: ParcelFileDescriptor, fromMs: Long, callback: ICueCallback, priority: Int) =
+            transcribeWithLanguage(pcm, fromMs, callback, priority, "auto")
+
+        override fun transcribeWithLanguage(pcm: ParcelFileDescriptor, fromMs: Long, callback: ICueCallback, priority: Int, language: String) =
             serve(Categories.ASR, priority) { pkg ->
+                if (language !in io.github.taehunkim.ondolsaem.sdk.SpeechLanguages.supported) {
+                    pcm.close()
+                    throw BadInputException("Unsupported speech language: $language")
+                }
+                if (fromMs < 0) { pcm.close(); throw BadInputException("fromMs must be nonnegative") }
                 withPcm(pcm) { f ->
                     runtime.speech(pkg).use { l ->
                         if (!l.value.canTranscribe) throw ModelNotReadyException(Categories.ASR, "no speech recognition model installed")
                         try {
-                            l.value.transcribe(f, fromMs) { cue: Cue ->
+                            l.value.transcribeWithLanguage(f, fromMs, language) { cue: Cue ->
                                 if (!callback.onCue(cue.startMs, cue.endMs, cue.text)) throw StopTranscription()
                             }
                         } catch (_: StopTranscription) {

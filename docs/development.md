@@ -67,3 +67,7 @@ JitPack finds the one artifact the build publishes (`com.github.taehunkim.ondols
 ## Release build
 
 Same scheme as Nunsori, with its own property names: `ONDOLSAEM_STORE_FILE`, `ONDOLSAEM_STORE_PASSWORD`, `ONDOLSAEM_KEY_ALIAS`, `ONDOLSAEM_KEY_PASSWORD` in `~/.gradle/gradle.properties` (or environment variables). Use the **same keystore and key as Nunsori**, so the service's signature check accepts release builds of both apps. Without these properties `./gradlew assembleRelease` builds an unsigned APK. Bump `appVersionName` in `app/build.gradle.kts` first.
+
+ASR language checks: `HostServiceTest#explicitSpeechLanguageDoesNotChangeLegacyAutoAndCanStopEarly` uses fake engines. `SpeechLanguageSmokeTest` is opt-in (`-e realAsr true`), requires a downloaded SenseVoice model plus raw 16 kHz mono PCM files `files/asr-language-en.pcm` and `files/asr-language-ko.pcm` in the host target app; compares auto → English → Korean → legacy auto. Never run real models alongside builds on the Mac mini.
+
+Verified 2026-11-14: HostServiceTest 25 tests + opt-in real SenseVoice language smoke 1 test passed. Auto recognition returned to its original result after fixed en/ko requests. Nunsori builds and its 170 JVM tests pass with the updated composite SDK. See sibling `../dorangori/docs/language-selection-test.md` for UI/upgrade checks.

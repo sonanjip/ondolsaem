@@ -39,3 +39,5 @@ Apps signed with the same key as OndolSaem, or with a key listed in `app/src/mai
 | `FOREGROUND_SERVICE_SPECIAL_USE` | Keeping models the user set to "keep loaded" in memory |
 | `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` | Asking the user to turn off battery optimization, offered only after Android refused to keep models loaded from the background; it lets the keep-alive service start in the background |
 | `com.google.android.apps.aicore.service.BIND_SERVICE` | Merged from `com.google.mlkit:genai-prompt` to bind Android AICore when Gemini Nano is used |
+
+Speech requests may include a language code; it is used only for local SenseVoice inference. It is not saved as a host-wide setting or sent over the network.

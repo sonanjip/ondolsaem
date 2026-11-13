@@ -101,6 +101,10 @@ class HostServiceTest {
 
     private class FakeSpeech(override val canTranscribe: Boolean) : SpeechTools {
         override suspend fun speechSpans(pcm: File) = listOf(Span(0, pcm.length() / 32), Span(5_000, 6_000))
+        override suspend fun transcribeWithLanguage(pcm: File, fromMs: Long, language: String, onCue: suspend (Cue) -> Unit) {
+            if (language == "auto") transcribe(pcm, fromMs, onCue)
+            else onCue(Cue(fromMs, fromMs + 900, "language:$language"))
+        }
         override suspend fun transcribe(pcm: File, fromMs: Long, onCue: suspend (Cue) -> Unit) {
             for (i in 0 until 5) onCue(Cue(fromMs + i * 1000, fromMs + i * 1000 + 900, "cue$i"))
         }
@@ -302,6 +306,41 @@ class HostServiceTest {
             }
             runCatching { job.await() }
             assertEquals("cue1", cues.last())
+        } finally { pcm.delete() }
+    }
+
+    @Test fun rawBinderRejectsUnsupportedSpeechLanguage() = runBlocking {
+        val pcm = File.createTempFile("invalid-language", ".pcm", ctx.cacheDir).apply { writeBytes(ByteArray(32_000)) }
+        try {
+            try {
+                client.call { host ->
+                    val asr = IAsrService.Stub.asInterface(host.getCapability(Categories.ASR))
+                    android.os.ParcelFileDescriptor.open(pcm, android.os.ParcelFileDescriptor.MODE_READ_ONLY).use { pfd ->
+                        asr.transcribeWithLanguage(pfd, 0, object : ICueCallback.Stub() {
+                            override fun onCue(startMs: Long, endMs: Long, text: String) = true
+                        }, OndolSaem.PRIORITY_INTERACTIVE, "fr")
+                    }
+                }
+                fail("Unsupported raw Binder language must not reach recognition")
+            } catch (e: HostCallException) { assertEquals(OndolSaem.Errors.BAD_INPUT, e.code) }
+        } finally { pcm.delete() }
+    }
+
+    @Test fun explicitSpeechLanguageDoesNotChangeLegacyAutoAndCanStopEarly() = runBlocking {
+        val pcm = File.createTempFile("language", ".pcm", ctx.cacheDir).apply { writeBytes(ByteArray(32_000)) }
+        try {
+            val heard = ArrayList<String>()
+            client.transcribeWithLanguage(pcm, 1500, "en") { start, _, text -> heard += "$start:$text" }
+            client.transcribeWithLanguage(pcm, 0, "ko") { _, _, text -> heard += text }
+            client.transcribe(pcm, 0) { _, _, text -> heard += text }
+            assertEquals(listOf("1500:language:en", "language:ko", "cue0", "cue1", "cue2", "cue3", "cue4"), heard)
+            val stopped = ArrayList<String>()
+            val job = async { client.transcribeWithLanguage(pcm, 0, "auto") { _, _, text ->
+                stopped += text
+                if (text == "cue1") throw kotlinx.coroutines.CancellationException("enough")
+            } }
+            runCatching { job.await() }
+            assertEquals(listOf("cue0", "cue1"), stopped)
         } finally { pcm.delete() }
     }
 

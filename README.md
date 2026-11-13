@@ -14,12 +14,13 @@ The name joins *ondol* (온돌, the floor heating that warms a whole house from 
 
 *One model in memory for every app: load on demand, the model catalog, and the connected apps.*
 
-Status: early development (0.8.1). The first client is [Nunsori / 눈소리](https://github.com/sonanjip/nunsori), an on-device semantic search app.
+Status: early development (0.9.0). The first client is [Nunsori / 눈소리](https://github.com/sonanjip/nunsori), an on-device semantic search app.
 
 ## Features
 
 | Feature | Description |
 |---|---|
+| Speech recognition | SenseVoice with per-request automatic/Korean/English/Japanese/Mandarin/Cantonese hints (API 5, SDK 0.7.0). Existing clients retain automatic detection. |
 | Model categories | Each category has a short description and curated models; one downloaded model is the category default |
 | Chat LLM | Supports LiteRT-LM models (Gemma 4 E2B/E4B, Qwen3.5 2B VL, LFM3 VL/Omni 2B) and **Gemini Nano via Android AICore** on supported devices (text & images, ~1.1–1.5 GB system RAM, minimal host memory overhead) |
 | Downloads | Warning before downloading on a metered network (mobile data or metered Wi-Fi), with a "wait for Wi-Fi" option |

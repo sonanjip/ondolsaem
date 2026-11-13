@@ -32,3 +32,16 @@ if (client.supports(OndolSaem.Api.V3)) {
 - Use `PRIORITY_BACKGROUND` for bulk work so interactive requests from any app go first; background requests of several apps take turns, one request each.
 - Versions: the client exchanges versions with the host on every connection (`hostInfo()` returns the host's level, minimum client level and app version). Pass `minHostApi` to `OndolSaemClient` for the lowest host level your app works with; calls into newer levels are checked by the SDK. Handle `HOST_TOO_OLD` ("update OndolSaem") and `CLIENT_TOO_OLD` ("update this app"); use `supports(OndolSaem.Api.Vx)` to switch optional features off on older hosts.
 - Background work "when idle": `IdleRule` / `IdlePreset` (SDK 0.5.0) define idle the same way for every app: charging and the screen off for 10, 30 or 60 minutes at ≥ 90 %, 70–89 % or < 70 % battery (preset `NORMAL`; `FAST` 5/15/30, `RELAXED` 30/60/120). `IdleState(context)` reads the battery, the charger and the screen (`isIdle(preset)`, `screenOn()`); call `IdleState(this).watchScreen()` in `Application.onCreate` for exact screen-off times. Pattern used by Nunsori and Jogakbo: a 15-minute periodic WorkManager job with only the charging constraint, which returns at once unless `isIdle`, and stops its loop when `screenOn()`.
+
+## Speech language (API 5, SDK 0.7.0 / host 0.9.0)
+
+```kotlin
+// Legacy auto remains available on API 1+.
+client.transcribe(pcm, 0L) { startMs, endMs, text -> /* consume cue */ }
+// Request-scoped input language, not a translation target (API 5).
+if (client.supports(OndolSaem.Api.V5)) {
+    client.transcribeWithLanguage(pcm, 0L, "ko") { startMs, endMs, text -> /* consume cue */ }
+}
+```
+
+Supported codes: `auto`, `ko`, `en`, `ja`, `zh` (Mandarin), `yue` (Cantonese). SYSTEM is a client-side preference: resolve it before calling. Unsupported SDK values throw IllegalArgumentException; invalid raw Binder requests return BAD_INPUT. Explicit-language calls to older hosts report HOST_TOO_OLD; the SDK never silently discards a hint. Legacy calls always use auto, including after another client requested a fixed language. PCM format, cue streaming, resume offsets, priority and cancellation remain unchanged.

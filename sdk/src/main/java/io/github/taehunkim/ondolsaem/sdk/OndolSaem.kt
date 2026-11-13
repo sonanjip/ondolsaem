@@ -21,7 +21,7 @@ object OndolSaem {
      * API level of this SDK: the contract it was built against. Bump it whenever a method, parcelable field or
      * category is added, and note the level on the new method ([Api]).
      */
-    const val API_VERSION = Api.V4
+    const val API_VERSION = Api.V5
 
     /** Release of this SDK (build.gradle.kts `version`). */
     val SDK_VERSION: String get() = BuildConfig.SDK_VERSION
@@ -36,6 +36,8 @@ object OndolSaem {
         const val V3 = 3
         /** Image generation (category [Categories.IMAGE_GEN], IImageGenService) and multimodal decisions (entailImage). */
         const val V4 = 4
+        /** Request-scoped recognition language (IAsrService.transcribeWithLanguage). */
+        const val V5 = 5
     }
 
     /** Requests a user is waiting for (chat, search queries) run before [PRIORITY_BACKGROUND] ones (indexing). */
